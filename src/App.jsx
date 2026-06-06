@@ -12,6 +12,7 @@ import Financials from './pages/Financials'
 import ActionPlan from './pages/ActionPlan'
 import AgentWorkspace from './pages/AgentWorkspace'
 import { api } from './lib/api'
+import AuthGate from './components/AuthGate'
 
 const pages = {
   idea: IdeaProfile,
@@ -24,6 +25,14 @@ const pages = {
 }
 
 export default function App() {
+  return (
+    <AuthGate>
+      {({ user, onSignOut }) => <AuthedApp user={user} onSignOut={onSignOut} />}
+    </AuthGate>
+  )
+}
+
+function AuthedApp({ user, onSignOut }) {
   const [stage, setStage] = useState('intake') // intake | dashboard
   const [page, setPage] = useState('idea')
   const [voiceOpen, setVoiceOpen] = useState(false)
@@ -57,6 +66,9 @@ export default function App() {
         })
         .catch(() => {
           sessionStorage.removeItem('discoveryId')
+          setDiscoveryId(null)
+          setDashboard(null)
+          setStage('intake')
         })
         .finally(() => setLoading(false))
     }
@@ -111,7 +123,7 @@ export default function App() {
       }} />
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <TopBar page={page} recentVoice={recentVoice} />
+        <TopBar page={page} recentVoice={recentVoice} user={user} onSignOut={onSignOut} />
         <div className="flex-1 overflow-y-auto px-9 py-8">
           <PageComponent dashboard={dashboard} discoveryId={discoveryId} />
           <div className="h-24" />

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Activity, Download, Presentation, Search, ChevronRight, Sparkles, Share2 } from 'lucide-react'
+import { Activity, Download, Presentation, Search, ChevronRight, Sparkles, Share2, LogOut } from 'lucide-react'
 import { AgentBadge } from './Brand'
 
 const pageMeta = {
@@ -12,7 +12,7 @@ const pageMeta = {
   agents:     { eyebrow: 'Flora & Finn',      title: 'How your two advisors figured this out', agent: 'both' },
 }
 
-export default function TopBar({ page, recentVoice }) {
+export default function TopBar({ page, recentVoice, user, onSignOut }) {
   const meta = pageMeta[page]
   return (
     <header className="sticky top-0 z-20 border-b border-black/[0.06] bg-cream-100/85 px-9 pt-5 pb-6 backdrop-blur-xl">
@@ -34,6 +34,25 @@ export default function TopBar({ page, recentVoice }) {
           <button className="btn-ghost text-[12.5px]"><Share2 size={13} /> Share</button>
           <button className="btn-ghost text-[12.5px]"><Download size={13} /> Export</button>
           <button className="btn-forest text-[12.5px]"><Presentation size={13} /> Pitch deck</button>
+          {user && (
+            <div className="ml-1 flex items-center gap-2 rounded-full border border-black/[0.06] bg-white py-1 pl-1 pr-2 text-[12px] text-forest-500">
+              {user.picture ? (
+                <img src={user.picture} alt="" className="h-7 w-7 rounded-full" referrerPolicy="no-referrer" />
+              ) : (
+                <span className="grid h-7 w-7 place-items-center rounded-full bg-sage-100 text-[11px] font-semibold">
+                  {(user.name || user.email || '?').slice(0, 1).toUpperCase()}
+                </span>
+              )}
+              <span className="hidden max-w-[140px] truncate xl:inline">{user.name || user.email}</span>
+              <button
+                onClick={onSignOut}
+                className="grid h-7 w-7 place-items-center rounded-full text-ink-500 hover:bg-cream-100 hover:text-forest-500"
+                title="Sign out"
+              >
+                <LogOut size={13} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

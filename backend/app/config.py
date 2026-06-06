@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    mongodb_url: str = "mongodb://mongo:27017"
+    mongodb_url: str = "mongodb://localhost:27017"
     database_name: str = "founderos"
     cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3001"]
 
@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     elevenlabs_voice_id_flora: str = ""
     elevenlabs_voice_id_finn: str = ""
     elevenlabs_model_id: str = "eleven_flash_v2_5"
+
+    # Google Sign-In OAuth Web Client ID. This is not a secret.
+    google_client_id: str = ""
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

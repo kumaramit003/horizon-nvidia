@@ -35,12 +35,17 @@ services:
       - ELEVENLABS_VOICE_ID_FLORA=${ELEVENLABS_VOICE_ID_FLORA:-}
       - ELEVENLABS_VOICE_ID_FINN=${ELEVENLABS_VOICE_ID_FINN:-}
       - ELEVENLABS_MODEL_ID=${ELEVENLABS_MODEL_ID:-eleven_flash_v2_5}
+      # Google Sign-In
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
     depends_on:
       mongo:
         condition: service_healthy
 
   frontend:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
     ports:
       - "3001:80"
     depends_on:
