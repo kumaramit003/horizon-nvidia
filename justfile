@@ -15,6 +15,10 @@ go:
         cp .env.example .env; \
         echo "  Edit .env and re-run \`just go\` if you need to set keys."; \
     fi
+    @echo "→ Clearing any leftover containers on our ports..."
+    @docker stop founderos-mongo > /dev/null 2>&1 || true
+    @docker compose down --remove-orphans > /dev/null 2>&1 || true
+    @./scripts/check-ports.sh || (echo ""; echo "✗ A port is already in use. Free it (e.g. \`lsof -nP -iTCP:<port> -sTCP:LISTEN\`) and re-run."; exit 1)
     @echo "→ Building and starting the stack..."
     docker compose up --build -d
     @echo ""
@@ -100,6 +104,10 @@ build:
     npm run build
 
 # ── Quick health checks ────────────────────────────────────────────────────
+
+# Check whether ports 3000 / 8001 / 27017 are free.
+doctor:
+    @./scripts/check-ports.sh
 
 # Smoke-test the running stack.
 check:
