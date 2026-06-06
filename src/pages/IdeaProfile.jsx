@@ -3,7 +3,7 @@ import {
   Briefcase, MapPin, Layers, Sprout, Sparkles, PoundSterling,
   ArrowUpRight, AlertTriangle, Mic, Quote
 } from 'lucide-react'
-import { Card, SectionHeader, Confidence, Tag, Progress, MiniActions, VoiceCommandBlock, AskWhyButton } from '../components/ui'
+import { Card, SectionHeader, Confidence, Tag, Progress, MiniActions, VoiceCommandBlock, AskWhyButton, SectionLoading } from '../components/ui'
 
 function EmptyState() {
   return (
@@ -20,11 +20,14 @@ function EmptyState() {
   )
 }
 
-export default function IdeaProfile({ dashboard }) {
+export default function IdeaProfile({ dashboard, section }) {
   const idea = dashboard?.idea || {}
   const hasIdea = !!(idea.title || idea.subtitle || idea.business_type)
 
-  if (!hasIdea) return <EmptyState />
+  if (!hasIdea) {
+    if (section === 'processing' || section === 'pending') return <SectionLoading label="your idea profile" who="Flora" />
+    return <EmptyState />
+  }
 
   const clarityRows = idea.clarity_rows?.length ? idea.clarity_rows : []
   const assumptions = idea.assumptions?.length ? idea.assumptions : []

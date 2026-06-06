@@ -32,10 +32,11 @@ class Settings(BaseSettings):
     finn_api_key: str = ""
     finn_model: str = ""
 
-    # Finn research tuning. Concurrency defaults low (2) to avoid thrashing a
-    # single-GPU NIM; raise it (e.g. 6) when Finn points at a scalable gateway.
+    # Finn research tuning. Default 6 = all modules fire at once (great for a
+    # scalable hosted gateway like Nebius — total time ≈ slowest module).
+    # Drop to 2 via FINN_CONCURRENCY when pointing at a single-GPU NIM.
     # Timeout is per-module seconds — bump it for slow gateways.
-    finn_concurrency: int = 2
+    finn_concurrency: int = 6
     finn_module_timeout: int = 240
 
     def llm_config_for(self, persona: str) -> dict:

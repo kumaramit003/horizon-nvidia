@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { MapPin, Layers, AlertTriangle, ArrowRight } from 'lucide-react'
-import { Card, SectionHeader, Tag, AskWhyButton, VoiceCommandBlock, SourceChip, EmptyPage } from '../components/ui'
+import { Card, SectionHeader, Tag, AskWhyButton, VoiceCommandBlock, SourceChip, EmptyPage, SectionLoading } from '../components/ui'
 
 const layers = [
   { id: 'customers',  label: 'Customer density', color: '#FF9259' },
@@ -100,12 +100,15 @@ function deriveWatch(loc) {
   return out.length ? out : ['No major red flags — still validate locally']
 }
 
-export default function Locations({ dashboard }) {
+export default function Locations({ dashboard, section }) {
   const _locations = dashboard?.locations?.length ? dashboard.locations : []
   const [activeLayers, setActiveLayers] = useState({ customers: true, competitors: true, transport: true, opportunity: false })
   const toggle = id => setActiveLayers(s => ({ ...s, [id]: !s[id] }))
 
-  if (!_locations.length) return <EmptyPage label="location analysis" />
+  if (!_locations.length) {
+    if (section === 'processing' || section === 'pending') return <SectionLoading label="where to launch" />
+    return <EmptyPage label="location analysis" />
+  }
 
   // Top pick = explicit primary, else highest score.
   const selected = _locations.find(l => l.primary) || [..._locations].sort((a, b) => b.score - a.score)[0]

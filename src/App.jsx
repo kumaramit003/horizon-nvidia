@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import VoiceAssistant, { VoiceFab } from './components/VoiceAssistant'
@@ -41,7 +41,36 @@ function AuthedApp({ user, onSignOut }) {
 
   const [discoveryId, setDiscoveryId] = useState(null)
   const [dashboard, setDashboard] = useState(null)
+  const [sections, setSections] = useState({}) // per-section status map
+  const [wsStatus, setWsStatus] = useState(null) // overall workspace status
   const [loading, setLoading] = useState(false)
+  const pollStopRef = useRef(null)
+
+  // Stop any in-flight poller (on switch / unmount / new workspace).
+  const stopPolling = () => {
+    if (pollStopRef.current) { pollStopRef.current(); pollStopRef.current = null }
+  }
+
+  // Open a workspace into the dashboard, then keep polling while sections
+  // are still streaming in from Finn.
+  const openWorkspace = (doc) => {
+    setDiscoveryId(doc.id)
+    sessionStorage.setItem('discoveryId', doc.id)
+    setDashboard(doc.dashboard || {})
+    setSections(doc.sections || {})
+    setWsStatus(doc.status)
+    setStage('dashboard')
+    stopPolling()
+    if (doc.status !== 'dashboard_ready' && doc.status !== 'error') {
+      pollStopRef.current = api.pollDiscovery(doc.id, (d) => {
+        setDashboard(d.dashboard || {})
+        setSections(d.sections || {})
+        setWsStatus(d.status)
+      })
+    }
+  }
+
+  useEffect(() => () => stopPolling(), [])
 
   useEffect(() => {
     const onKey = (e) => {
@@ -72,13 +101,9 @@ function AuthedApp({ user, onSignOut }) {
   useEffect(() => {
     const saved = sessionStorage.getItem('discoveryId')
     if (saved) {
-      setDiscoveryId(saved)
       setLoading(true)
-      api.waitForDashboard(saved)
-        .then(data => {
-          setDashboard(data)
-          setStage('dashboard')
-        })
+      api.getDiscovery(saved)
+        .then(doc => { openWorkspace(doc) })
         .catch(() => {
           sessionStorage.removeItem('discoveryId')
           setDiscoveryId(null)
@@ -87,6 +112,7 @@ function AuthedApp({ user, onSignOut }) {
         })
         .finally(() => setLoading(false))
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const handleIntakeComplete = async (conversation) => {
@@ -100,15 +126,13 @@ function AuthedApp({ user, onSignOut }) {
       workspace_name: workspaceName || 'New Discovery',
       intake: { conversation },
     })
-
     setDiscoveryId(id)
     sessionStorage.setItem('discoveryId', id)
 
-    // Pipeline runs in the background; poll until it's ready. Intake keeps
-    // showing its "analysing" animation while this promise is pending.
-    const data = await api.waitForDashboard(id)
-    setDashboard(data)
-    setStage('dashboard')
+    // Intake keeps its "analysing" animation until Flora's idea profile is
+    // ready, then we open the dashboard and Finn's sections stream in there.
+    const doc = await api.waitUntilReady(id)
+    openWorkspace(doc)
   }
 
   if (loading) {
@@ -127,11 +151,8 @@ function AuthedApp({ user, onSignOut }) {
   const loadExistingWorkspace = async (id) => {
     setLoading(true)
     try {
-      const data = await api.waitForDashboard(id)
-      setDiscoveryId(id)
-      sessionStorage.setItem('discoveryId', id)
-      setDashboard(data)
-      setStage('dashboard')
+      const doc = await api.getDiscovery(id)
+      openWorkspace(doc)
     } catch (e) {
       console.warn('Failed to open workspace', e)
     } finally {
@@ -141,16 +162,14 @@ function AuthedApp({ user, onSignOut }) {
 
   const rerunCurrent = async () => {
     if (!discoveryId) return
-    setLoading(true)
     try {
       await api.rerunDiscovery(discoveryId)
-      const data = await api.waitForDashboard(discoveryId)
-      setDashboard(data)
+      // Immediately reflect the reset section statuses, then stream updates.
+      const doc = await api.getDiscovery(discoveryId)
+      openWorkspace(doc)
     } catch (e) {
       console.warn('Re-run failed', e)
       throw e
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -169,11 +188,9 @@ function AuthedApp({ user, onSignOut }) {
         onSwitchWorkspace={async (newId) => {
           setLoading(true)
           try {
-            const data = await api.waitForDashboard(newId)
-            setDiscoveryId(newId)
-            sessionStorage.setItem('discoveryId', newId)
-            setDashboard(data)
+            const doc = await api.getDiscovery(newId)
             setPage('idea')
+            openWorkspace(doc)
           } catch (e) {
             console.warn('Failed to switch workspace', e)
           } finally {
@@ -181,9 +198,12 @@ function AuthedApp({ user, onSignOut }) {
           }
         }}
         onBackToIntake={() => {
+          stopPolling()
           sessionStorage.removeItem('discoveryId')
           setDiscoveryId(null)
           setDashboard(null)
+          setSections({})
+          setWsStatus(null)
           setStage('intake')
         }}
       />
@@ -197,7 +217,13 @@ function AuthedApp({ user, onSignOut }) {
           workspaceName={dashboard?.idea?.title || ''}
         />
         <div className="flex-1 overflow-y-auto px-9 py-8">
-          <PageComponent dashboard={dashboard} discoveryId={discoveryId} onRerun={rerunCurrent} />
+          <PageComponent
+            dashboard={dashboard}
+            discoveryId={discoveryId}
+            section={sections[page]}
+            wsStatus={wsStatus}
+            onRerun={rerunCurrent}
+          />
           <div className="h-24" />
         </div>
       </main>
@@ -210,13 +236,13 @@ function AuthedApp({ user, onSignOut }) {
         discoveryId={discoveryId}
         onRefineComplete={async (command) => {
           setRecentVoice(command)
-          // Refresh the dashboard so the new sections render.
+          // Refine reset section statuses server-side; re-open + stream.
           if (discoveryId) {
             try {
-              const data = await api.waitForDashboard(discoveryId)
-              setDashboard(data)
+              const doc = await api.getDiscovery(discoveryId)
+              openWorkspace(doc)
             } catch (e) {
-              console.warn('Failed to refresh dashboard after refine', e)
+              console.warn('Failed to refresh after refine', e)
             }
           }
         }}

@@ -1,6 +1,6 @@
 import React from 'react'
 import { Plus, ArrowRight, Pencil, FileText } from 'lucide-react'
-import { Card, SectionHeader, Tag, Progress, AskWhyButton, VoiceCommandBlock, SourceChip, EmptyPage } from '../components/ui'
+import { Card, SectionHeader, Tag, Progress, AskWhyButton, VoiceCommandBlock, SourceChip, EmptyPage, SectionLoading } from '../components/ui'
 import { DynIcon } from '../lib/icons'
 
 // Best-effort monthly burn: sum the first £-amount of any row that reads
@@ -17,14 +17,17 @@ function estimateMonthlyBurn(rows) {
   return counted ? total : null
 }
 
-export default function Financials({ dashboard }) {
+export default function Financials({ dashboard, section }) {
   const _bands = dashboard?.cost_bands?.length ? dashboard.cost_bands : []
   const _assumptions = dashboard?.monthly_assumptions?.length ? dashboard.monthly_assumptions : []
   const _grants = dashboard?.grants?.length ? dashboard.grants : []
   const _fundingReadiness = dashboard?.funding_readiness ?? 0
 
   const hasAny = _bands.length || _assumptions.length || _grants.length
-  if (!hasAny) return <EmptyPage label="financial analysis" />
+  if (!hasAny) {
+    if (section === 'processing' || section === 'pending') return <SectionLoading label="money & grants" />
+    return <EmptyPage label="financial analysis" />
+  }
 
   const burn = estimateMonthlyBurn(_assumptions)
 

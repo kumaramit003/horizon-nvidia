@@ -7,7 +7,7 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..agents.pipeline import run_discovery_pipeline
+from ..agents.pipeline import ALL_SECTIONS, run_streaming_pipeline
 from ..database import get_db
 from ..models import DiscoveryCreate, DiscoverySummary
 from .auth import current_user
@@ -28,35 +28,48 @@ def _oid(id_str: str) -> ObjectId:
         raise HTTPException(400, "Invalid discovery ID")
 
 
+def _initial_sections() -> dict:
+    """Every section starts as 'processing' so the UI shows a spinner per page."""
+    return {name: "processing" for name in ALL_SECTIONS}
+
+
 async def _run_pipeline_and_store(discovery_id: ObjectId, conversation: list[dict]) -> None:
-    """Run Flora → Finn and persist the result. Always leaves the doc in a
-    terminal state (``dashboard_ready`` or ``error``) so the frontend never
-    polls forever."""
+    """Stream Flora → Finn into Mongo, one section at a time.
+
+    Each section flips its own status (processing → ready|error) and writes its
+    own dashboard keys the moment it completes, so the frontend can render
+    sections progressively instead of waiting for the whole run.
+    """
     db = get_db()
-    try:
-        dashboard = await run_discovery_pipeline(conversation)
-        # Promote the LLM-generated idea title to the workspace name so the
-        # sidebar/switcher don't show the founder's raw transcript.
-        title = ((dashboard.get("idea") or {}).get("title") or "").strip()
-        update = {
-            "dashboard": dashboard,
-            "status": "dashboard_ready",
-            "error": None,
-            "updated_at": datetime.utcnow(),
-        }
-        if title:
-            update["workspace_name"] = title[:80]
+
+    async def on_section(name: str, status: str, patch: dict | None) -> None:
+        update = {f"sections.{name}": status, "updated_at": datetime.utcnow()}
+        if patch:
+            for key, value in patch.items():
+                update[f"dashboard.{key}"] = value
+            if name == "idea":
+                title = ((patch.get("idea") or {}).get("title") or "").strip()
+                if title:
+                    update["workspace_name"] = title[:80]
         await db.discoveries.update_one({"_id": discovery_id}, {"$set": update})
+        # As soon as the idea is ready the dashboard is usable — let the UI in.
+        if name == "idea":
+            await db.discoveries.update_one(
+                {"_id": discovery_id}, {"$set": {"status": "ready"}}
+            )
+
+    try:
+        await run_streaming_pipeline(conversation, on_section)
+        await db.discoveries.update_one(
+            {"_id": discovery_id},
+            {"$set": {"status": "dashboard_ready", "error": None, "updated_at": datetime.utcnow()}},
+        )
         logger.info("Pipeline complete for %s", discovery_id)
     except Exception as e:  # noqa: BLE001 — must capture every failure
         logger.exception("Pipeline failed for %s", discovery_id)
         await db.discoveries.update_one(
             {"_id": discovery_id},
-            {"$set": {
-                "status": "error",
-                "error": str(e),
-                "updated_at": datetime.utcnow(),
-            }},
+            {"$set": {"status": "error", "error": str(e), "updated_at": datetime.utcnow()}},
         )
 
 
@@ -78,6 +91,7 @@ async def create_discovery(body: DiscoveryCreate, user: Annotated[dict, Depends(
         "user_id": user["_id"],
         "intake": body.intake.model_dump(),
         "dashboard": {},
+        "sections": _initial_sections(),
         "status": "processing",
         "created_at": now,
         "updated_at": now,
@@ -124,6 +138,7 @@ async def get_discovery(discovery_id: str, user: Annotated[dict, Depends(current
         "id": str(doc["_id"]),
         "workspace_name": doc.get("workspace_name"),
         "status": doc.get("status"),
+        "sections": doc.get("sections") or {},
         "error": doc.get("error"),
         "dashboard": doc.get("dashboard") or {},
         "intake": doc.get("intake"),
@@ -140,8 +155,7 @@ async def get_dashboard(discovery_id: str, user: Annotated[dict, Depends(current
     )
     if not doc:
         raise HTTPException(404, "Discovery not found")
-    if doc.get("status") == "processing":
-        raise HTTPException(202, "Dashboard is still being generated")
+    # Return whatever's ready — sections stream in, so partial is expected.
     return doc.get("dashboard", {})
 
 
@@ -189,6 +203,7 @@ async def refine_discovery(
         {"$set": {
             "intake.conversation": conversation,
             "status": "processing",
+            "sections": _initial_sections(),
             "updated_at": datetime.utcnow(),
         }},
     )
@@ -211,7 +226,12 @@ async def rerun_discovery(discovery_id: str, user: Annotated[dict, Depends(curre
         raise HTTPException(400, "This workspace has no intake conversation to re-run")
 
     await db.discoveries.update_one(
-        {"_id": oid}, {"$set": {"status": "processing", "updated_at": datetime.utcnow()}}
+        {"_id": oid},
+        {"$set": {
+            "status": "processing",
+            "sections": _initial_sections(),
+            "updated_at": datetime.utcnow(),
+        }},
     )
 
     _spawn_pipeline(oid, list(conversation))

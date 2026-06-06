@@ -114,8 +114,16 @@ async def chat_json(
     try:
         return _extract_json(raw)
     except ValueError as e:
-        # Log what the model actually returned so we can see why it didn't
-        # parse (prose wrapping, truncated JSON, refusal, etc.).
+        # A truncated response (finish_reason=length) produces non-empty but
+        # unparseable JSON. Retry once with a bigger budget before giving up.
+        if finish == "length":
+            logger.warning("LLM[%s] JSON truncated (finish=length) — retrying with 2x tokens", persona)
+            raw2, finish2 = await _once(max_tokens * 2)
+            if raw2:
+                try:
+                    return _extract_json(raw2)
+                except ValueError:
+                    raw, finish = raw2, finish2  # fall through to error logging
         logger.error(
             "LLM[%s] JSON parse failed (%s). finish=%s, len=%d. Raw head: %s ... tail: %s",
             persona, e, finish, len(raw), raw[:800], raw[-300:],
