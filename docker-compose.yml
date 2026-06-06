@@ -26,7 +26,11 @@ services:
       # MongoDB
       - MONGODB_URL=mongodb://mongo:27017
       - DATABASE_NAME=${DATABASE_NAME:-founderos}
-      # Nemotron (NVIDIA NIM or any OpenAI-compatible endpoint)
+      # LLM endpoint — Nebius (hosted) is the active default when set;
+      # NVIDIA NIM vars are the fallback.
+      - NEBIUS_API_KEY=${NEBIUS_API_KEY:-}
+      - NEBIUS_BASE_URL=${NEBIUS_BASE_URL:-https://api.tokenfactory.nebius.com/v1}
+      - NEBIUS_MODEL=${NEBIUS_MODEL:-nvidia/Nemotron-3-Ultra-550b-a55b}
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-not-needed}
       - NVIDIA_BASE_URL=${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
       - NVIDIA_MODEL=${NVIDIA_MODEL:-nvidia/nemotron-3-nano-omni-30b-a3b-reasoning}

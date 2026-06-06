@@ -15,11 +15,12 @@ def get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
         _client = AsyncOpenAI(
-            base_url=settings.nvidia_base_url,
-            api_key=settings.nvidia_api_key,
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
             timeout=170.0,   # per request — reasoning model can legitimately need 90-120s
             max_retries=0,   # no automatic retries — they double the wait
         )
+        logger.info("LLM client init: base_url=%s model=%s", settings.llm_base_url, settings.llm_model)
     return _client
 
 
@@ -47,7 +48,7 @@ async def chat_json(system: str, user: str, temperature: float = 0.4, max_tokens
     client = get_client()
     try:
         response = await client.chat.completions.create(
-            model=settings.nvidia_model,
+            model=settings.llm_model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
