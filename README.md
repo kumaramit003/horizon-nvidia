@@ -13,6 +13,30 @@ npm run dev
 
 Then open http://localhost:5173.
 
+## ElevenLabs voice
+
+Copy real credentials into `.env`:
+
+```bash
+ELEVENLABS_API_KEY=...
+ELEVENLABS_VOICE_ID_FINN=...
+ELEVENLABS_VOICE_ID_FLORA=...
+```
+
+Run the voice API in one terminal:
+
+```bash
+npm run voice:server
+```
+
+Run the web app in another terminal:
+
+```bash
+npm run dev
+```
+
+The Vite dev server proxies `/api/voice/*` to `http://localhost:8787`, keeping the API key server-side.
+
 ## Build
 
 ```bash

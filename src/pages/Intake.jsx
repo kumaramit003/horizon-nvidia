@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Mic, MicOff, Pause, Sparkles, ArrowRight, CornerDownLeft, Database, ExternalLink, Leaf } from 'lucide-react'
 import { Wordmark, LeafMark, Tagline } from '../components/Brand'
+import { speakWithElevenLabs } from '../lib/voiceApi'
 
 const CONVERSATION = [
   { speaker: 'flora', text: "Hey — I'm Flora. Tell me the rough version of your idea. I'll ask the right questions so Finn can turn it into a real launch plan." },
@@ -75,15 +76,41 @@ function Waveform({ active }) {
 }
 
 export default function Intake({ onComplete }) {
+  const [started, setStarted] = useState(false)
   const [turn, setTurn] = useState(0)
   const [typed, setTyped] = useState('')
   const [orbState, setOrbState] = useState('listening')
   const [analysing, setAnalysing] = useState(false)
   const [analysisDone, setAnalysisDone] = useState(false)
+  const [voiceError, setVoiceError] = useState('')
+  const spokenTurnRef = useRef(null)
 
   useEffect(() => {
+    if (!started) return
     if (turn >= CONVERSATION.length) return
     const msg = CONVERSATION[turn]
+    const controller = new AbortController()
+    let audio
+    let audioUrl
+
+    if (msg.speaker === 'flora' && spokenTurnRef.current !== turn) {
+      spokenTurnRef.current = turn
+      setVoiceError('')
+      speakWithElevenLabs({
+        text: msg.text,
+        persona: 'flora',
+        signal: controller.signal,
+      })
+        .then(blob => {
+          audioUrl = URL.createObjectURL(blob)
+          audio = new Audio(audioUrl)
+          return audio.play()
+        })
+        .catch(error => {
+          if (error.name !== 'AbortError') setVoiceError(error.message)
+        })
+    }
+
     setOrbState(msg.speaker === 'flora' ? 'speaking' : 'listening')
     setTyped('')
     let i = 0
@@ -104,8 +131,13 @@ export default function Intake({ onComplete }) {
         }, msg.speaker === 'flora' ? 700 : 800)
       }
     }, speed)
-    return () => clearInterval(interval)
-  }, [turn])
+    return () => {
+      clearInterval(interval)
+      controller.abort()
+      if (audio) audio.pause()
+      if (audioUrl) URL.revokeObjectURL(audioUrl)
+    }
+  }, [started, turn])
 
   useEffect(() => {
     if (!analysing) return
@@ -138,7 +170,9 @@ export default function Intake({ onComplete }) {
       </header>
 
       <main className="relative z-10 mx-auto flex min-h-[calc(100vh-90px)] max-w-[760px] flex-col items-center justify-center px-6 pb-16 pt-6 text-center">
-        {!analysisDone ? (
+        {!started ? (
+          <StartVoice onStart={() => setStarted(true)} />
+        ) : !analysisDone ? (
           <>
             <div key={turn} className="mb-7 text-[12.5px] font-medium uppercase tracking-[0.22em] text-sage-500 animate-[fadeIn_1s_ease]">
               {motivational}
@@ -191,6 +225,12 @@ export default function Intake({ onComplete }) {
                   {completion}% Idea profile building
                 </div>
 
+                {voiceError && (
+                  <div className="mt-4 rounded-full border border-butter-200 bg-butter-100 px-4 py-2 text-[12px] text-ink-700">
+                    ElevenLabs voice skipped: {voiceError}
+                  </div>
+                )}
+
                 <div className="mt-8 flex items-center gap-2">
                   <button className="btn-ghost text-[12.5px]"><Pause size={12} /> Pause</button>
                   <button className="btn-ghost text-[12.5px]"><CornerDownLeft size={12} /> Type instead</button>
@@ -209,6 +249,39 @@ export default function Intake({ onComplete }) {
       <style>{`
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
       `}</style>
+    </div>
+  )
+}
+
+function StartVoice({ onStart }) {
+  return (
+    <div className="relative mx-auto flex w-full max-w-[620px] flex-col items-center text-center">
+      <span className="pointer-events-none absolute -top-20 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
+      <div className="relative grid h-24 w-24 place-items-center rounded-[2rem] gradient-orb-flora shadow-lift">
+        <LeafMark size={32} className="opacity-95 drop-shadow" />
+        <span className="absolute inset-0 animate-ringOut rounded-[2rem] border border-peach-200/60" />
+      </div>
+
+      <div className="relative mt-8 section-eyebrow flex items-center gap-2">
+        <Sparkles size={12} className="text-peach-500" />
+        Voice discovery
+      </div>
+      <h1 className="relative mt-3 display text-[52px] leading-[1.04] tracking-tight text-forest-500">
+        Start with <span className="italic-accent text-peach-500">Flora.</span>
+      </h1>
+      <p className="relative mt-4 max-w-[520px] text-[15.5px] leading-relaxed text-ink-500">
+        Tap once to begin the voice demo. Flora will speak the opening intake, then Finn will prepare the dashboard.
+      </p>
+
+      <button
+        onClick={onStart}
+        className="relative mt-9 inline-flex items-center gap-2 rounded-full bg-forest-500 px-7 py-3.5 text-[14.5px] font-medium text-cream-50 shadow-lift transition-all hover:scale-[1.02] hover:bg-forest-600"
+      >
+        <Mic size={16} />
+        Start voice intake
+      </button>
+
+      <Tagline block className="relative mt-12" />
     </div>
   )
 }
