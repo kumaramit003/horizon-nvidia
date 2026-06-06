@@ -4,44 +4,12 @@ import {
   Database, ExternalLink, Leaf, StopCircle, Loader2,
 } from 'lucide-react'
 import { Wordmark, LeafMark, Tagline } from '../components/Brand'
+import { AgentFace } from '../components/AgentFace'
 import { api } from '../lib/api'
 import { speakWithElevenLabs } from '../lib/voiceApi'
 import { createRecorder, transcribe, isRecordingSupported, requestMicPermission } from '../lib/recorder'
 
 // ─── Visuals ────────────────────────────────────────────────────────────────
-
-function Orb({ state, who = 'flora' }) {
-  const grad = state === 'listening' ? 'gradient-orb-listening' : (who === 'flora' ? 'gradient-orb-flora' : 'gradient-orb-finn')
-  return (
-    <div className="relative grid place-items-center" style={{ width: 220, height: 220 }}>
-      <span className={`absolute inset-0 rounded-full ${grad} opacity-20 blur-3xl animate-breathe`} />
-      <span className={`absolute inset-4 rounded-full ${grad} opacity-40 blur-2xl animate-breathe`} style={{ animationDelay: '500ms' }} />
-      <span className={`absolute inset-9 rounded-full ${grad} opacity-95 blur-[1px] animate-breathe`} style={{ animationDelay: '200ms' }} />
-      <span className={`absolute inset-12 rounded-full ${grad} shadow-[inset_0_8px_30px_rgba(255,255,255,0.45),inset_0_-30px_50px_rgba(27,47,28,0.35)]`} />
-      <span className="absolute inset-[68px] rounded-full bg-white/30 backdrop-blur-sm" />
-
-      {state !== 'idle' && (
-        <>
-          <span className={`absolute inset-0 rounded-full border ${state === 'listening' ? 'border-peach-300/60' : 'border-sage-300/50'} animate-ringOut`} />
-          <span className={`absolute inset-0 rounded-full border ${state === 'listening' ? 'border-peach-300/50' : 'border-sage-300/40'} animate-ringOut`} style={{ animationDelay: '800ms' }} />
-        </>
-      )}
-
-      <div className="relative flex flex-col items-center text-white">
-        {state === 'listening'
-          ? <Mic size={22} className="opacity-95 drop-shadow" />
-          : <LeafMark size={22} className="opacity-95 drop-shadow" />}
-        <div className="mt-1.5 text-[9.5px] font-medium uppercase tracking-[0.22em] text-white/90">
-          {state === 'thinking' ? (who === 'flora' ? 'Flora thinking' : 'Finn working') :
-           state === 'speaking' ? (who === 'flora' ? 'Flora speaking' : 'Finn speaking') :
-           state === 'listening' ? 'Listening' :
-           state === 'waiting'  ? 'Your turn' :
-           who === 'flora' ? 'Flora' : 'Finn'}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // Compact audio-reactive waveform shown under the orb while listening.
 // `silenceProgress` (0..1) fades the bars as we approach auto-stop, giving
@@ -95,25 +63,6 @@ function GatheredPips({ gathered }) {
   )
 }
 
-// Short verbal stalls Flora speaks while the LLM is generating her real reply.
-// All phrases trail off ("…") so they feel like she's mid-thought, not blocked.
-const STALLS = [
-  "Mmm…",
-  "Hmm…",
-  "Okay, so…",
-  "Right, so…",
-  "Mmhm…",
-  "Hmm, let me see…",
-  "Okay, walking with you on this…",
-  "So, thinking…",
-  "Mmm, okay…",
-  "Right, thinking out loud…",
-]
-
-function pickStall() {
-  return STALLS[Math.floor(Math.random() * STALLS.length)]
-}
-
 // Static opener — skips a slow LLM cold-start on page load. From the second
 // turn onwards the live LLM takes over.
 const FLORA_OPENER = "Hey, I'm Flora — so happy you're here! Tell me, what's the idea that's been rattling around in your head?"
@@ -136,7 +85,6 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
   const [voiceError, setVoiceError] = useState('')
   const [micState, setMicState] = useState('idle') // idle | recording | transcribing
   const [micError, setMicError] = useState('')
-  const [floraStall, setFloraStall] = useState('') // verbal filler while thinking
   const [micLevel, setMicLevel] = useState(0) // 0..1, drives the waveform bars
   const [silenceProgress, setSilenceProgress] = useState(0) // 0..1 toward auto-stop
   const [floraAudioPlaying, setFloraAudioPlaying] = useState(false)
@@ -144,47 +92,10 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
   const chatEndRef = useRef(null)
   const spokenMessageRef = useRef(null)
   const recorderRef = useRef(null)
-  const stallControllerRef = useRef(null)
-  const stallAudioRef = useRef(null)
   const micStreamRef = useRef(null)
   const vadFrameRef = useRef(null)
   const vadAcRef = useRef(null)
   const micSupported = isRecordingSupported()
-
-  // ── Stall audio: short verbal filler while Flora is thinking ──
-  const stopStall = () => {
-    if (stallControllerRef.current) {
-      stallControllerRef.current.abort()
-      stallControllerRef.current = null
-    }
-    if (stallAudioRef.current) {
-      stallAudioRef.current.pause()
-      stallAudioRef.current = null
-    }
-  }
-
-  const playStall = async () => {
-    stopStall()
-    const text = pickStall()
-    setFloraStall(text)
-    const controller = new AbortController()
-    stallControllerRef.current = controller
-    try {
-      const blob = await speakWithElevenLabs({ text, persona: 'flora', signal: controller.signal })
-      if (controller.signal.aborted) return
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      stallAudioRef.current = audio
-      audio.onended = () => {
-        URL.revokeObjectURL(url)
-        if (stallAudioRef.current === audio) stallAudioRef.current = null
-      }
-      audio.play().catch(() => {})
-    } catch (err) {
-      // best-effort — silent stalls don't break the flow
-      if (err?.name !== 'AbortError') console.warn('Stall TTS failed', err)
-    }
-  }
 
   // ── Flora's opening turn — static so it shows up instantly ──
   useEffect(() => {
@@ -216,10 +127,6 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
     if (!floraMessage || floraThinking) return
     if (spokenMessageRef.current === floraMessage) return
     spokenMessageRef.current = floraMessage
-
-    // Real reply is ready — kill any stall audio still in flight
-    stopStall()
-    setFloraStall('')
 
     const controller = new AbortController()
     let audio
@@ -266,7 +173,6 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
     setConversation(updated)
 
     setFloraThinking(true)
-    playStall() // fire-and-forget verbal filler while we wait
 
     try {
       const res = await api.floraChat(updated)
@@ -480,7 +386,7 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
           <Ready />
         ) : analysing ? (
           <>
-            <Orb state="thinking" who="finn" />
+            <AgentFace state="thinking" who="finn" size={200} />
             <div className="mt-5 text-[11.5px] font-medium uppercase tracking-[0.18em] text-ink-500 text-center">
               Flora &amp; Finn are building your plan
             </div>
@@ -493,15 +399,16 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
               className={micState === 'recording' ? 'cursor-pointer' : ''}
               title={micState === 'recording' ? 'Tap to stop and send' : ''}
             >
-              <Orb
+              <AgentFace
+                size={210}
+                who="flora"
                 state={
                   floraThinking ? 'thinking'
                   : floraTyping ? 'speaking'
                   : micState === 'recording' ? 'listening'
                   : micState === 'transcribing' ? 'thinking'
-                  : 'waiting'
+                  : 'idle'
                 }
-                who="flora"
               />
             </div>
 
@@ -550,24 +457,6 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
             {voiceError && (
               <div className="mt-4 rounded-full border border-butter-200 bg-butter-100 px-4 py-1.5 text-[11.5px] text-ink-700">
                 Voice unavailable: {voiceError}
-              </div>
-            )}
-
-            {floraThinking && (
-              <div className="mt-5 flex flex-col items-center gap-2.5 animate-[fadeIn_0.3s_ease]">
-                {floraStall && (
-                  <div className="text-center">
-                    <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-sage-500 mb-1.5">Flora</div>
-                    <p className="display italic text-[19px] leading-snug text-forest-500/70">
-                      {floraStall}
-                    </p>
-                  </div>
-                )}
-                <span className="inline-flex gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '150ms' }} />
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '300ms' }} />
-                </span>
               </div>
             )}
 
@@ -655,10 +544,9 @@ function StartVoice({ onStart, onOpenWorkspace }) {
 
   return (
     <div className="relative mx-auto flex w-full max-w-[620px] flex-col items-center text-center">
-      <span className="pointer-events-none absolute -top-20 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
-      <div className="relative grid h-24 w-24 place-items-center rounded-[2rem] gradient-orb-flora shadow-lift">
-        <LeafMark size={32} className="opacity-95 drop-shadow" />
-        <span className="absolute inset-0 animate-ringOut rounded-[2rem] border border-peach-200/60" />
+      <span className="pointer-events-none absolute -top-16 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
+      <div className="relative">
+        <AgentFace who="flora" state="happy" size={132} />
       </div>
 
       <div className="relative mt-8 section-eyebrow flex items-center gap-2">
@@ -821,10 +709,8 @@ function Ready() {
     <div className="relative mx-auto w-full max-w-[600px] text-center">
       <span aria-hidden className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-56 w-56 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
       <div className="relative flex flex-col items-center">
-        <div className="grid h-20 w-20 place-items-center rounded-3xl gradient-orb-finn shadow-lift">
-          <Leaf size={30} className="text-white" />
-        </div>
-        <h1 className="mt-8 display text-[56px] leading-[1.04] tracking-tight text-forest-500">
+        <AgentFace who="finn" state="happy" size={120} />
+        <h1 className="mt-6 display text-[56px] leading-[1.04] tracking-tight text-forest-500">
           Your plan is <span className="italic-accent text-sage-500">ready.</span>
         </h1>
         <p className="mt-5 max-w-[520px] text-[16px] leading-relaxed text-ink-500">

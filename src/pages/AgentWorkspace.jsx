@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import {
   Mic, BarChart3, Database, Activity, AlertCircle, ExternalLink,
-  RefreshCw, Search, Globe, MessageSquare
+  RefreshCw, Search, Globe, MessageSquare, Loader2, Check
 } from 'lucide-react'
 import { Card, SectionHeader, Tag, Confidence, AskWhyButton } from '../components/ui'
 import { LeafMark, Tagline } from '../components/Brand'
@@ -9,29 +9,48 @@ import { LONDON_DATASETS } from '../data/londonDatasets'
 import { DynIcon } from '../lib/icons'
 import { resolveDataset } from '../lib/datasets'
 
-const statusPill = {
-  done:    'bg-sage-100 border-sage-200 text-forest-500',
-  running: 'bg-peach-100 border-peach-200 text-peach-600',
-  queued:  'bg-cream-50 border-ink-100 text-ink-500',
+function StatusDot({ status }) {
+  if (status === 'processing') return <Loader2 size={13} className="shrink-0 animate-spin text-peach-500" />
+  if (status === 'ready') return <Check size={13} className="shrink-0 text-sage-500" />
+  return <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ink-200" />
 }
 
-export default function AgentWorkspace({ dashboard, onRerun }) {
-  const floraModules = dashboard?.flora_modules?.length ? dashboard.flora_modules : []
-  const finnModules = dashboard?.finn_modules?.length ? dashboard.finn_modules : []
+// Finn's real research sections — the source of truth for live status.
+const FINN_SECTIONS = [
+  { key: 'audience',    name: 'Target Audience',   icon: 'Users',         desc: 'Segments, personas & interview questions' },
+  { key: 'validation',  name: 'Market Validation', icon: 'BarChart3',     desc: 'Evidence, risk radar & experiments' },
+  { key: 'competitors', name: 'Competition',       icon: 'Swords',        desc: 'Rivals, gaps & how you win' },
+  { key: 'locations',   name: 'Locations',         icon: 'MapPin',        desc: 'London areas ranked by fit' },
+  { key: 'financials',  name: 'Money & Grants',    icon: 'PoundSterling', desc: 'Costs, burn & funding' },
+  { key: 'plan',        name: 'Launch Plan',       icon: 'ListChecks',    desc: '7-day sprint & 90-day roadmap' },
+]
+
+const livePill = {
+  ready:      'bg-sage-100 border-sage-200 text-forest-500',
+  processing: 'bg-peach-100 border-peach-200 text-peach-600',
+  error:      'bg-rose-100 border-rose-200 text-ink-800',
+  pending:    'bg-cream-50 border-ink-100 text-ink-500',
+}
+const liveLabel = { ready: 'Done', processing: 'Running…', error: 'Retry', pending: 'Queued' }
+
+export default function AgentWorkspace({ dashboard, sections = {}, wsStatus, onRerun }) {
   const log = dashboard?.agent_log?.length ? dashboard.agent_log : []
 
-  const [rerunning, setRerunning] = useState(false)
+  // Derive everything from the live section-status map (single source of truth).
+  const statusOf = (k) => sections[k] || 'pending'
+  const ideaStatus = statusOf('idea')
+  const finnDone = FINN_SECTIONS.filter(s => statusOf(s.key) === 'ready').length
+  const finnProcessing = FINN_SECTIONS.filter(s => statusOf(s.key) === 'processing').length
+  const isAnalysing = finnProcessing > 0 || wsStatus === 'processing'
+
   const [rerunError, setRerunError] = useState('')
   const handleRerun = async () => {
-    if (!onRerun || rerunning) return
+    if (!onRerun || isAnalysing) return
     setRerunError('')
-    setRerunning(true)
     try {
       await onRerun()
     } catch (e) {
       setRerunError(e?.message || 'Re-run failed')
-    } finally {
-      setRerunning(false)
     }
   }
   const [filter, setFilter] = useState('All')
@@ -61,30 +80,31 @@ export default function AgentWorkspace({ dashboard, onRerun }) {
                   Flora ran the voice intake. She listened carefully, asked the deeper questions, gently challenged weak assumptions, and built your <span className="text-forest-500">Idea Profile</span>.
                 </p>
               </div>
-              <span className="pill bg-peach-100 border-peach-200 text-peach-600">
-                <span className="h-1.5 w-1.5 rounded-full bg-peach-500" /> Idle · ready
+              <span className={`pill border ${livePill[ideaStatus]}`}>
+                <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" /> {ideaStatus === 'ready' ? 'Idle · ready' : ideaStatus === 'processing' ? 'Listening…' : liveLabel[ideaStatus]}
               </span>
             </div>
 
             <ul className="relative mt-5 space-y-2">
-              {floraModules.map(m => {
-                return (
-                  <li key={m.name} className="flex items-center gap-3 rounded-2xl bg-cream-50 px-3.5 py-2.5">
-                    <span className="grid h-8 w-8 place-items-center rounded-xl bg-white text-forest-500 shadow-soft">
-                      <DynIcon name={m.icon} size={13} />
-                    </span>
-                    <div className="flex-1 leading-tight">
-                      <div className="text-[13px] font-semibold text-forest-500">{m.name}</div>
-                      <div className="text-[11.5px] text-ink-500">{m.desc}</div>
-                    </div>
-                    <span className="text-[10.5px] font-mono text-ink-400">{m.time}</span>
-                  </li>
-                )
-              })}
+              {[
+                { name: 'Voice intake', icon: 'Mic', desc: 'Captured your idea, motivation & constraints' },
+                { name: 'Idea profile', icon: 'MessageSquare', desc: 'Clarity score, assumptions & open questions' },
+              ].map(m => (
+                <li key={m.name} className="flex items-center gap-3 rounded-2xl bg-cream-50 px-3.5 py-2.5">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white text-forest-500 shadow-soft">
+                    <DynIcon name={m.icon} size={13} />
+                  </span>
+                  <div className="min-w-0 flex-1 leading-tight">
+                    <div className="text-[13px] font-semibold text-forest-500">{m.name}</div>
+                    <div className="text-[11.5px] text-ink-500">{m.desc}</div>
+                  </div>
+                  <StatusDot status={ideaStatus} />
+                </li>
+              ))}
             </ul>
             <div className="relative mt-4 flex items-center gap-2">
               <button className="btn-ghost text-[12px]"><MessageSquare size={12} /> Resume with Flora</button>
-              <span className="text-[11.5px] text-ink-500">{floraModules.length} module{floraModules.length === 1 ? '' : 's'} · 1 voice interview</span>
+              <span className="text-[11.5px] text-ink-500">Discovery · 1 voice interview</span>
             </div>
           </div>
 
@@ -105,46 +125,59 @@ export default function AgentWorkspace({ dashboard, onRerun }) {
                   Finn doesn't sugarcoat. He reads London for you, validates the idea against hard datasets, compares locations, surfaces grants, and writes the <span className="text-forest-500">launch plan</span>.
                 </p>
               </div>
-              <span className="pill bg-sage-100 border-sage-200 text-forest-500">
-                <Activity size={11} /> Researching
+              <span className={`pill border ${isAnalysing ? 'bg-peach-100 border-peach-200 text-peach-600' : 'bg-sage-100 border-sage-200 text-forest-500'}`}>
+                <Activity size={11} className={isAnalysing ? 'animate-pulse' : ''} /> {isAnalysing ? 'Researching…' : 'Ready'}
               </span>
             </div>
 
             <ul className="relative mt-5 space-y-2">
-              {finnModules.slice(0, 4).map(m => {
+              {FINN_SECTIONS.map(m => {
+                const st = statusOf(m.key)
                 return (
-                  <li key={m.name} className="flex items-center gap-3 rounded-2xl bg-cream-50 px-3.5 py-2.5">
-                    <span className="grid h-8 w-8 place-items-center rounded-xl bg-white text-forest-500 shadow-soft">
+                  <li key={m.key} className="flex items-center gap-3 rounded-2xl bg-cream-50 px-3.5 py-2.5">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white text-forest-500 shadow-soft">
                       <DynIcon name={m.icon} size={13} />
                     </span>
-                    <div className="flex-1 leading-tight">
+                    <div className="min-w-0 flex-1 leading-tight">
                       <div className="text-[13px] font-semibold text-forest-500">{m.name}</div>
                       <div className="text-[11.5px] text-ink-500">{m.desc}</div>
                     </div>
-                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-medium ${statusPill[m.status]}`}>
-                      {m.status === 'done' ? 'Done' : m.status === 'running' ? 'Running' : 'Queued'}
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-medium ${livePill[st]}`}>
+                      {st === 'processing' && <Loader2 size={9} className="animate-spin" />}
+                      {liveLabel[st]}
                     </span>
                   </li>
                 )
               })}
             </ul>
-            {finnModules.length > 4 && (
-              <div className="relative mt-3 text-[11.5px] text-ink-500">
-                + {finnModules.length - 4} more module{finnModules.length - 4 === 1 ? '' : 's'}: {finnModules.slice(4).map(m => m.name).join(' · ')}
+
+            {/* Live progress bar */}
+            <div className="relative mt-4">
+              <div className="mb-1.5 flex items-center justify-between text-[11.5px]">
+                <span className="text-ink-500">{isAnalysing ? 'Analysing…' : 'Analysis complete'}</span>
+                <span className="font-mono text-ink-500">{finnDone}/{FINN_SECTIONS.length}</span>
               </div>
-            )}
-            <div className="relative mt-3 flex items-center gap-2">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-cream-200">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-sage-300 to-forest-400 transition-all duration-500"
+                  style={{ width: `${(finnDone / FINN_SECTIONS.length) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="relative mt-4 flex items-center gap-2">
               <button
                 onClick={handleRerun}
-                disabled={rerunning}
-                className="btn-ghost text-[12px] disabled:opacity-60"
+                disabled={isAnalysing}
+                className="btn-forest text-[12px] disabled:opacity-50"
                 title={rerunError || ''}
               >
-                <RefreshCw size={12} className={rerunning ? 'animate-spin' : ''} />
-                {rerunning ? 'Re-running Finn…' : 'Re-run analysis'}
+                <RefreshCw size={12} className={isAnalysing ? 'animate-spin' : ''} />
+                {isAnalysing ? `Analysing… ${finnDone}/${FINN_SECTIONS.length}` : 'Re-run analysis'}
               </button>
-              <span className="text-[11.5px] text-ink-500">{finnModules.length} module{finnModules.length === 1 ? '' : 's'} · {LONDON_DATASETS.length} datasets</span>
+              <span className="text-[11.5px] text-ink-500">{FINN_SECTIONS.length} modules · {LONDON_DATASETS.length} datasets</span>
             </div>
+            {rerunError && <div className="relative mt-2 text-[11.5px] text-rose-300">{rerunError}</div>}
           </div>
         </div>
       </section>
@@ -237,30 +270,28 @@ export default function AgentWorkspace({ dashboard, onRerun }) {
           <div className="relative">
             <div className="absolute left-6 top-2 bottom-2 w-px bg-gradient-to-b from-peach-400 via-cream-200 to-forest-400" />
             <ul className="space-y-3">
-              {[...floraModules.map(m => ({ ...m, who: 'Flora' })), ...finnModules.map(m => ({ ...m, who: 'Finn' }))].map((a, idx) => {
+              {[
+                { who: 'Flora', name: 'Idea discovery', icon: 'MessageSquare', key: 'idea', desc: 'Built your idea profile from the voice intake.' },
+                ...FINN_SECTIONS.map(s => ({ who: 'Finn', name: s.name, icon: s.icon, key: s.key, desc: s.desc })),
+              ].map((a, idx) => {
                 const isFlora = a.who === 'Flora'
+                const st = statusOf(a.key)
                 return (
-                  <li key={a.name + idx} className="relative flex items-start gap-4">
+                  <li key={a.key + idx} className="relative flex items-start gap-4">
                     <div className={`relative z-10 grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${isFlora ? 'gradient-orb-flora' : 'gradient-orb-finn'}`}>
                       <DynIcon name={a.icon} size={16} className="text-white" />
                     </div>
                     <div className="flex-1 card !p-4">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[14px] font-semibold text-forest-500">{a.name}</span>
                         <span className="pill-cream">{a.who}</span>
-                        <span className={`ml-auto inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusPill[a.status]}`}>
-                          {a.status === 'done' ? 'Completed' : a.status === 'running' ? 'Running' : 'Queued'}
+                        <span className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${livePill[st]}`}>
+                          {st === 'processing' && <Loader2 size={9} className="animate-spin" />}
+                          {st === 'ready' ? 'Completed' : liveLabel[st]}
                         </span>
-                        <span className="text-[11px] font-mono text-ink-400">{a.time}</span>
                       </div>
                       <div className="mt-1.5 text-[13px] text-ink-500">{a.desc}</div>
-                      {a.sources > 0 && (
-                        <div className="mt-2 flex items-center gap-1.5 text-[11.5px] text-ink-500">
-                          <Database size={11} className="text-sage-500" />
-                          Queried <span className="text-forest-500 font-semibold">{a.sources}</span> London datasets
-                        </div>
-                      )}
-                      {a.status === 'running' && (
+                      {st === 'processing' && (
                         <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-cream-200">
                           <div className="h-full w-1/2 animate-shimmer bg-gradient-to-r from-transparent via-sage-500 to-transparent bg-[length:200%_100%]" />
                         </div>

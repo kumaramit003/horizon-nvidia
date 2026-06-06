@@ -23,6 +23,7 @@ SECTION_KEYS = {
     "idea":       ["idea"],
     "audience":   ["audience_confidence", "segments", "personas", "interview_questions"],
     "validation": ["validation_verdict", "validation_description", "evidence", "radar", "experiments"],
+    "competitors": ["competition_level", "openness_score", "competition_summary", "competitors", "your_edges", "matrix"],
     "locations":  ["locations"],
     "financials": ["cost_bands", "monthly_assumptions", "grants", "funding_readiness"],
     "plan":       ["days", "roadmap", "assets", "tasks"],

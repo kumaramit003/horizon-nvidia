@@ -7,6 +7,7 @@ import Intake from './pages/Intake'
 import IdeaProfile from './pages/IdeaProfile'
 import TargetAudience from './pages/TargetAudience'
 import MarketValidation from './pages/MarketValidation'
+import Competitors from './pages/Competitors'
 import Locations from './pages/Locations'
 import Financials from './pages/Financials'
 import ActionPlan from './pages/ActionPlan'
@@ -18,6 +19,7 @@ const pages = {
   idea: IdeaProfile,
   audience: TargetAudience,
   validation: MarketValidation,
+  competitors: Competitors,
   locations: Locations,
   financials: Financials,
   plan: ActionPlan,
@@ -240,6 +242,7 @@ function AuthedApp({ user, onSignOut }) {
             dashboard={dashboard}
             discoveryId={discoveryId}
             section={sections[page]}
+            sections={sections}
             wsStatus={wsStatus}
             onRerun={rerunCurrent}
           />

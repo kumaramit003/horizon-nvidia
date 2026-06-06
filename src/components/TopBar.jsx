@@ -6,6 +6,7 @@ const pageMeta = {
   idea:       { eyebrow: 'The idea',          title: "What you're really building",       agent: 'flora' },
   audience:   { eyebrow: 'Your audience',     title: "Who's going to buy this",            agent: 'finn' },
   validation: { eyebrow: 'Worth doing?',      title: 'Is this idea worth the risk',        agent: 'finn' },
+  competitors:{ eyebrow: 'Competition',       title: 'Who else is doing this',             agent: 'finn' },
   locations:  { eyebrow: 'Locations',         title: 'Where in London should you start',   agent: 'finn' },
   financials: { eyebrow: 'Money & grants',    title: 'What it costs, what you can claim',  agent: 'finn' },
   plan:       { eyebrow: 'Your next 7 days',  title: "Let's actually get going",           agent: 'finn' },

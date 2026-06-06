@@ -144,3 +144,24 @@ body {
   transform: rotate(-12deg);
   vertical-align: -1px;
 }
+
+/* ── AgentFace expressions ─────────────────────────────────────────────── */
+@keyframes faceBlink { 0%, 90%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+@keyframes faceTalk  { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+@keyframes faceLook  { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(-2.2px); } 70% { transform: translateX(2.2px); } }
+
+.face-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: faceBlink 4.6s infinite ease-in-out;
+}
+.face-eyes-think {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: faceLook 2.6s infinite ease-in-out;
+}
+.face-talk {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: faceTalk 0.3s infinite ease-in-out;
+}

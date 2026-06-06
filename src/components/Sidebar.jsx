@@ -1,19 +1,20 @@
 import React from 'react'
 import {
   Lightbulb, Users, LineChart, MapPin, PoundSterling,
-  ListChecks, Leaf, ArrowLeft, Database, ExternalLink, Sparkles
+  ListChecks, Leaf, ArrowLeft, Database, ExternalLink, Sparkles, Swords
 } from 'lucide-react'
 import { Wordmark, AgentBadge } from './Brand'
 import WorkspaceSwitcher from './WorkspaceSwitcher'
 
 const items = [
-  { id: 'idea',       label: 'The idea',          icon: Lightbulb, agent: 'flora' },
-  { id: 'audience',   label: 'Who buys',          icon: Users,     agent: 'finn' },
-  { id: 'validation', label: 'Worth doing?',      icon: LineChart, agent: 'finn' },
-  { id: 'locations',  label: 'Where',             icon: MapPin,    agent: 'finn' },
-  { id: 'financials', label: 'Money & grants',    icon: PoundSterling, agent: 'finn' },
-  { id: 'plan',       label: 'Your next 7 days',  icon: ListChecks, agent: 'finn' },
-  { id: 'agents',     label: 'Flora & Finn',      icon: Leaf,      agent: 'both' },
+  { id: 'idea',        label: 'The idea',          icon: Lightbulb,     agent: 'flora' },
+  { id: 'audience',    label: 'Who buys',          icon: Users,         agent: 'finn' },
+  { id: 'validation',  label: 'Worth doing?',      icon: LineChart,     agent: 'finn' },
+  { id: 'competitors', label: 'Competition',       icon: Swords,        agent: 'finn' },
+  { id: 'locations',   label: 'Where',             icon: MapPin,        agent: 'finn' },
+  { id: 'financials',  label: 'Money & grants',    icon: PoundSterling, agent: 'finn' },
+  { id: 'plan',        label: 'Your next 7 days',  icon: ListChecks,    agent: 'finn' },
+  { id: 'agents',      label: 'Flora & Finn',      icon: Leaf,          agent: 'both' },
 ]
 
 export default function Sidebar({ active, onChange, onBackToIntake, discoveryId, onSwitchWorkspace }) {

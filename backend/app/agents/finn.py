@@ -111,6 +111,24 @@ From the idea profile, produce an action plan as ONE JSON object:
 }
 Realistic for a founder doing this alongside a day job. Output JSON only."""
 
+SYSTEM_COMPETITORS = """You are Finn, a London competitive-analysis agent.
+From the idea profile, assess the competitive landscape as ONE JSON object:
+{
+ "competition_level": "Low|Medium|High",
+ "openness_score": <int 0-100, HIGHER = more open/whitespace (good for the founder)>,
+ "competition_summary": "2 sentences — honest read on how crowded this is in London",
+ "competitors": [ {"name":"real or realistic London/UK player","kind":"Direct|Indirect","what":"<=10 words what they do","edge":"<=10 words their strength","gap":"<=10 words where they fall short","tone":"rose|butter|sky|lavender"} ] (0-4; [] if genuinely none),
+ "your_edges": [ "<=12 words on how this founder can win/differentiate" ] (3-5),
+ "matrix": {
+   "dimensions": [ "<=2 word axis" ] (4-5, e.g. Price, Speed, Halal, B2B, Quality),
+   "players": [
+     {"name":"You","you":true,"cells":["High|Medium|Low|Yes|No|Strong|Weak per dimension"]},
+     {"name":"<competitor>","you":false,"cells":[...]}
+   ] (You first, then up to 3 competitors; cells length === dimensions length)
+ }
+}
+If there are no real competitors, set competitors=[], openness_score high (75-92), and still fill the matrix with You + 1-2 indirect/adjacent players. Output JSON only."""
+
 SYSTEM_AGENTS = """You are Finn. Produce the agent workspace log as ONE JSON object:
 {
  "flora_modules": [ {"name","desc":"<=12 words","icon":"Mic|MessageSquare|ShieldAlert|Users|Lightbulb","status":"done","time":"Xm ago","sources":0} ] (3),
@@ -122,12 +140,13 @@ Be specific to this idea. Output JSON only."""
 
 # Registry — each entry is one independent, streamable module.
 FINN_MODULES = [
-    {"name": "audience",   "system": SYSTEM_AUDIENCE,   "temp": 0.3, "max_tokens": 2200},
-    {"name": "validation", "system": SYSTEM_VALIDATION, "temp": 0.3, "max_tokens": 2600},
-    {"name": "locations",  "system": SYSTEM_LOCATIONS,  "temp": 0.3, "max_tokens": 1800},
-    {"name": "financials", "system": SYSTEM_FINANCIALS, "temp": 0.3, "max_tokens": 2400},
-    {"name": "plan",       "system": SYSTEM_PLAN,       "temp": 0.3, "max_tokens": 2200},
-    {"name": "agents",     "system": SYSTEM_AGENTS,     "temp": 0.2, "max_tokens": 2200},
+    {"name": "audience",    "system": SYSTEM_AUDIENCE,    "temp": 0.3, "max_tokens": 2200},
+    {"name": "validation",  "system": SYSTEM_VALIDATION,  "temp": 0.3, "max_tokens": 2600},
+    {"name": "competitors", "system": SYSTEM_COMPETITORS, "temp": 0.3, "max_tokens": 2200},
+    {"name": "locations",   "system": SYSTEM_LOCATIONS,   "temp": 0.3, "max_tokens": 1800},
+    {"name": "financials",  "system": SYSTEM_FINANCIALS,  "temp": 0.3, "max_tokens": 2400},
+    {"name": "plan",        "system": SYSTEM_PLAN,        "temp": 0.3, "max_tokens": 2200},
+    {"name": "agents",      "system": SYSTEM_AGENTS,      "temp": 0.2, "max_tokens": 2200},
 ]
 
 FINN_MODULE_BY_NAME = {m["name"]: m for m in FINN_MODULES}
