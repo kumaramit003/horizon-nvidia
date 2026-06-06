@@ -1,9 +1,10 @@
-import React from 'react'
+import React, { useState } from 'react'
 import {
   Briefcase, MapPin, Layers, Sprout, Sparkles, PoundSterling,
-  ArrowUpRight, AlertTriangle, Mic, Quote
+  ArrowUpRight, AlertTriangle, Mic, Quote, Send, Check, Loader2, X
 } from 'lucide-react'
 import { Card, SectionHeader, Confidence, Tag, Progress, MiniActions, VoiceCommandBlock, AskWhyButton, SectionLoading } from '../components/ui'
+import { api } from '../lib/api'
 
 function EmptyState() {
   return (
@@ -20,7 +21,9 @@ function EmptyState() {
   )
 }
 
-export default function IdeaProfile({ dashboard, section }) {
+export default function IdeaProfile({ dashboard, section, discoveryId, onRefresh }) {
+  // Questions the founder has answered this session (optimistically hidden).
+  const [answeredQs, setAnsweredQs] = useState(() => new Set())
   const idea = dashboard?.idea || {}
   const hasIdea = !!(idea.title || idea.subtitle || idea.business_type)
 
@@ -31,7 +34,9 @@ export default function IdeaProfile({ dashboard, section }) {
 
   const clarityRows = idea.clarity_rows?.length ? idea.clarity_rows : []
   const assumptions = idea.assumptions?.length ? idea.assumptions : []
-  const openQuestions = idea.open_questions?.length ? idea.open_questions : []
+  const allQuestions = idea.open_questions?.length ? idea.open_questions : []
+  const openQuestions = allQuestions.filter(q => !answeredQs.has(q))
+  const answeredCount = answeredQs.size
   const clarityScore = idea.clarity_score ?? 0
   const floraNote = idea.flora_note || ''
   const title = idea.title || 'Untitled idea'
@@ -168,34 +173,29 @@ export default function IdeaProfile({ dashboard, section }) {
         <Card className="!p-7">
           <SectionHeader
             eyebrow="Open questions"
-            title="Answer these to push clarity to 90%"
+            title="Answer these to push clarity up"
+            description={answeredCount > 0 ? `${answeredCount} answered — Flora is folding them in.` : undefined}
             right={
-              <button
-                className="btn-text"
-                onClick={() => askFlora('I want to answer your open questions about my idea.')}
-              >
-                Ask Flora in voice <Mic size={12} />
-              </button>
+              <span className="pill-cream"><Sparkles size={11} className="text-peach-500" /> Clarity {clarityScore}%</span>
             }
           />
-          <ul className="divide-y divide-black/[0.05]">
-            {openQuestions.map((q, i) => (
-              <li key={q} className="flex items-center gap-4 py-3.5">
-                <span className="display grid h-9 w-9 shrink-0 place-items-center rounded-full bg-cream-100 text-[16px] text-ink-900">
-                  {i + 1}
-                </span>
-                <span className="flex-1 text-[15px] text-ink-900">{q}</span>
-                <button
-                  className="btn-ghost shrink-0 text-[12px]"
-                  onClick={() => askFlora(`About my idea — ${q} `)}
-                >
-                  Answer <ArrowUpRight size={11} />
-                </button>
-              </li>
-            ))}
-          </ul>
+          {openQuestions.length === 0 ? (
+            <div className="flex items-center gap-3 rounded-2xl bg-mint-100 border border-mint-200 px-4 py-4 text-[14px] text-forest-500">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-mint-200 text-forest-500"><Check size={16} /></span>
+              You've answered everything Flora asked. She's sharpening your profile now.
+            </div>
+          ) : (
+            <ul className="divide-y divide-black/[0.05]">
+              {openQuestions.map((q, i) => (
+                <OpenQuestion
+                  key={q} q={q} index={i} discoveryId={discoveryId}
+                  onAnswered={() => { setAnsweredQs(s => new Set(s).add(q)); onRefresh?.() }}
+                />
+              ))}
+            </ul>
+          )}
           <div className="mt-5 flex items-start gap-2.5 rounded-2xl bg-butter-100 border border-butter-200 px-4 py-3 text-[13px] text-ink-900">
-            <AlertTriangle size={14} className="mt-0.5 shrink-0" /> Knowing your budget and channel unlocks accurate financials and grant matching.
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" /> Each answer you give raises your clarity score and tightens the whole plan.
           </div>
         </Card>
 
@@ -211,6 +211,66 @@ export default function IdeaProfile({ dashboard, section }) {
         />
       </div>
     </div>
+  )
+}
+
+// One open question with an inline answer box. Submitting sends the answer
+// to Flora (fast re-run) and optimistically removes it from the list.
+function OpenQuestion({ q, index, discoveryId, onAnswered }) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const submit = async () => {
+    const answer = text.trim()
+    if (!answer || !discoveryId) return
+    setBusy(true); setErr('')
+    try {
+      await api.answerQuestion(discoveryId, q, answer)
+      onAnswered?.()
+    } catch (e) {
+      setErr(e?.message || 'Could not save')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <li className="py-3.5">
+      <div className="flex items-center gap-4">
+        <span className="display grid h-9 w-9 shrink-0 place-items-center rounded-full bg-cream-100 text-[16px] text-ink-900">
+          {index + 1}
+        </span>
+        <span className="flex-1 text-[15px] text-ink-900">{q}</span>
+        {!open && (
+          <button className="btn-ghost shrink-0 text-[12px]" onClick={() => setOpen(true)}>
+            Answer <ArrowUpRight size={11} />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="mt-3 pl-[52px] animate-[fadeIn_0.3s_ease]">
+          <div className="flex items-start gap-2 rounded-2xl border border-sage-200 bg-white px-3.5 py-2.5 shadow-soft focus-within:ring-2 focus-within:ring-sage-200">
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
+              placeholder="Type your answer for Flora…"
+              rows={2}
+              autoFocus
+              className="flex-1 resize-none bg-transparent text-[14px] leading-snug text-forest-500 placeholder:text-ink-300 outline-none"
+            />
+            <button onClick={() => { setOpen(false); setText('') }} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-400 hover:bg-cream-100" title="Cancel">
+              <X size={14} />
+            </button>
+            <button onClick={submit} disabled={!text.trim() || busy} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-forest-500 text-white hover:bg-forest-600 disabled:opacity-40" title="Send to Flora">
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            </button>
+          </div>
+          {err && <div className="mt-1.5 text-[11.5px] text-rose-300">{err}</div>}
+        </div>
+      )}
+    </li>
   )
 }
 

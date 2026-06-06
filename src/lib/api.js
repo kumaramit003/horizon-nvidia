@@ -154,6 +154,14 @@ export const api = {
     })
   },
 
+  // Record a founder's answer to an open question → re-runs Flora (clarity++).
+  answerQuestion(id, question, answer) {
+    return request(`/discoveries/${id}/answer`, {
+      method: 'POST',
+      body: JSON.stringify({ question, answer }),
+    })
+  },
+
   floraChat(conversation) {
     return request('/flora/chat', {
       method: 'POST',

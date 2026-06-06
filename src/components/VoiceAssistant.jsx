@@ -2,10 +2,11 @@ import React, { useEffect, useRef, useState } from 'react'
 import {
   Mic, X, ArrowRight, ArrowLeft, Loader2, AlertTriangle, MessageSquare,
   Sparkles, Search, HelpCircle, Users, LineChart, Swords, MapPin,
-  PoundSterling, ListChecks, Send,
+  PoundSterling, ListChecks, Send, Volume2, VolumeX,
 } from 'lucide-react'
 import { AgentFace } from './AgentFace'
 import { api } from '../lib/api'
+import { speakWithElevenLabs } from '../lib/voiceApi'
 import { createRecorder, transcribe, isRecordingSupported, requestMicPermission } from '../lib/recorder'
 
 // Areas Finn can dig deeper on (maps to a backend section key).
@@ -60,10 +61,32 @@ export default function VoiceAssistant({ open, onClose, prefill, discoveryId, on
   const [answer, setAnswer] = useState('')
   const [errMsg, setErrMsg] = useState('')
   const [micLevel, setMicLevel] = useState(0)
+  const [speaking, setSpeaking] = useState(false)
   const recorderRef = useRef(null)
   const vadAcRef = useRef(null)
   const vadFrameRef = useRef(null)
+  const answerAudioRef = useRef(null)
   const micSupported = isRecordingSupported()
+
+  // Speak a piece of text in Finn's voice (best-effort).
+  const stopAnswerAudio = () => {
+    if (answerAudioRef.current) { try { answerAudioRef.current.pause() } catch {} answerAudioRef.current = null }
+    setSpeaking(false)
+  }
+  const speakAnswer = async (txt) => {
+    stopAnswerAudio()
+    if (!txt) return
+    try {
+      setSpeaking(true)
+      const blob = await speakWithElevenLabs({ text: txt, persona: 'finn' })
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      answerAudioRef.current = audio
+      audio.onended = () => { URL.revokeObjectURL(url); setSpeaking(false) }
+      audio.onerror = () => setSpeaking(false)
+      await audio.play()
+    } catch { setSpeaking(false) }
+  }
 
   // Reset + route any prefilled command. prefill = string | { text, agent, mode }.
   useEffect(() => {
@@ -131,7 +154,7 @@ export default function VoiceAssistant({ open, onClose, prefill, discoveryId, on
 
   useEffect(() => {
     if (!open) {
-      stopVad()
+      stopVad(); stopAnswerAudio()
       if (recorderRef.current) {
         try { recorderRef.current.rec.cancel() } catch {}
         try { recorderRef.current.stream.getTracks().forEach(t => t.stop()) } catch {}
@@ -170,8 +193,10 @@ export default function VoiceAssistant({ open, onClose, prefill, discoveryId, on
     setPhase('sending'); setErrMsg(''); setAnswer('')
     try {
       const { answer } = await api.askFinn(discoveryId, q)
-      setAnswer(answer || "Finn didn't have an answer for that.")
+      const a = answer || "Finn didn't have an answer for that."
+      setAnswer(a)
       setPhase('answered')
+      speakAnswer(a) // Finn reads it aloud
     } catch (e) { setErrMsg(e?.message || 'Finn could not answer'); setPhase('error') }
   }
 
@@ -325,8 +350,24 @@ export default function VoiceAssistant({ open, onClose, prefill, discoveryId, on
                 />
                 {answer ? (
                   <div className="mt-4 rounded-2xl border border-sage-200 bg-sage-50 p-4">
-                    <div className="flex items-center gap-2 text-[10.5px] font-medium uppercase tracking-[0.16em] text-forest-500 mb-1.5">
-                      <MessageSquare size={11} /> Finn
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-[10.5px] font-medium uppercase tracking-[0.16em] text-forest-500">
+                        <MessageSquare size={11} /> Finn
+                        {speaking && (
+                          <span className="inline-flex items-end gap-[2px]">
+                            {[0, 1, 2].map(i => (
+                              <span key={i} className="w-[2px] rounded-full bg-sage-500 animate-wave" style={{ height: 8, animationDelay: `${i * 120}ms` }} />
+                            ))}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => (speaking ? stopAnswerAudio() : speakAnswer(answer))}
+                        className="grid h-7 w-7 place-items-center rounded-lg text-ink-400 hover:bg-white hover:text-forest-500"
+                        title={speaking ? 'Stop' : 'Play again'}
+                      >
+                        {speaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
+                      </button>
                     </div>
                     <p className="text-[14px] leading-relaxed text-forest-500">{answer}</p>
                   </div>

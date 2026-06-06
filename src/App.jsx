@@ -177,6 +177,18 @@ function AuthedApp({ user, onSignOut }) {
     }
   }
 
+  // Re-fetch the discovery and resume streaming — used after a targeted
+  // change (e.g. answering an open question) so pages reflect the update.
+  const refreshWorkspace = async () => {
+    if (!discoveryId) return
+    try {
+      const doc = await api.getDiscovery(discoveryId)
+      openWorkspace(doc)
+    } catch (e) {
+      console.warn('Refresh failed', e)
+    }
+  }
+
   if (stage === 'intake') {
     return <Intake onComplete={handleIntakeComplete} onOpenWorkspace={loadExistingWorkspace} />
   }
@@ -250,6 +262,7 @@ function AuthedApp({ user, onSignOut }) {
             sections={sections}
             wsStatus={wsStatus}
             onRerun={rerunCurrent}
+            onRefresh={refreshWorkspace}
           />
           <div className="h-24" />
         </div>

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from ..agents.pipeline import ALL_SECTIONS, SECTION_KEYS, run_streaming_pipeline
 from ..agents.finn import answer_question, refine_section
+from ..agents.flora import run_flora
 from ..database import get_db
 from ..models import DiscoveryCreate, DiscoverySummary
 from .auth import current_user
@@ -263,6 +264,63 @@ async def refine_discovery_section(
     _pipeline_tasks.add(task)
     task.add_done_callback(_pipeline_tasks.discard)
     return {"ok": True, "id": discovery_id, "section": section, "status": "processing"}
+
+
+class AnswerRequest(BaseModel):
+    question: str
+    answer: str
+
+
+async def _run_flora_only(discovery_id: ObjectId, conversation: list[dict]) -> None:
+    """Re-run only Flora's idea analysis (fast) after the founder answers an
+    open question — refreshes clarity score + open questions, keeps the rest."""
+    db = get_db()
+    try:
+        idea = await run_flora(conversation)
+        update = {"sections.idea": "ready", "updated_at": datetime.utcnow()}
+        if isinstance(idea, dict) and idea:
+            update["dashboard.idea"] = idea
+            title = (idea.get("title") or "").strip()
+            if title:
+                update["workspace_name"] = title[:80]
+        await db.discoveries.update_one({"_id": discovery_id}, {"$set": update})
+        doc = await db.discoveries.find_one({"_id": discovery_id}, {"sections": 1})
+        secs = (doc or {}).get("sections") or {}
+        if not any(s == "processing" for s in secs.values()):
+            await db.discoveries.update_one({"_id": discovery_id}, {"$set": {"status": "dashboard_ready"}})
+    except Exception:
+        logger.exception("Flora-only re-run failed for %s", discovery_id)
+        await db.discoveries.update_one({"_id": discovery_id}, {"$set": {"sections.idea": "ready"}})
+
+
+@router.post("/{discovery_id}/answer")
+async def answer_open_question(discovery_id: str, body: AnswerRequest, user: Annotated[dict, Depends(current_user)]):
+    """Record the founder's answer to an open question and re-run Flora's idea
+    analysis so clarity rises and the question resolves."""
+    q = (body.question or "").strip()
+    a = (body.answer or "").strip()
+    if not a:
+        raise HTTPException(400, "Empty answer")
+    db = get_db()
+    oid = _oid(discovery_id)
+    doc = await db.discoveries.find_one({"_id": oid, "user_id": user["_id"]})
+    if not doc:
+        raise HTTPException(404, "Discovery not found")
+
+    conversation = list((doc.get("intake") or {}).get("conversation") or [])
+    if q:
+        conversation.append({"speaker": "flora", "text": q})
+    conversation.append({"speaker": "you", "text": a})
+
+    await db.discoveries.update_one(
+        {"_id": oid},
+        {"$set": {"intake.conversation": conversation, "sections.idea": "processing",
+                  "status": "processing", "updated_at": datetime.utcnow()}},
+    )
+    task = asyncio.create_task(_run_flora_only(oid, conversation))
+    _pipeline_tasks.add(task)
+    task.add_done_callback(_pipeline_tasks.discard)
+    return {"ok": True, "id": discovery_id, "status": "processing"}
 
 
 class AskRequest(BaseModel):
