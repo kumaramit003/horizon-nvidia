@@ -100,7 +100,7 @@ async def flora_chat(conversation: list[dict]) -> dict:
         user_msg = f"Conversation so far:\n\n{transcript}\n\nWhat do you say next?"
 
     logger.info("Flora chat turn (conversation length: %d)", len(conversation))
-    return await chat_json(CHAT_SYSTEM, user_msg, temperature=0.5)
+    return await chat_json(CHAT_SYSTEM, user_msg, persona="flora", temperature=0.5)
 
 
 # ── Analysis mode: Flora produces the full Idea Profile ──────────────────────
@@ -161,4 +161,4 @@ async def run_flora(conversation: list[dict]) -> dict:
     user_msg = f"Here is the intake conversation:\n\n{transcript}"
 
     logger.info("Flora analysing intake (%d turns)", len(conversation))
-    return await chat_json(ANALYSIS_SYSTEM, user_msg, temperature=0.35)
+    return await chat_json(ANALYSIS_SYSTEM, user_msg, persona="flora", temperature=0.35)

@@ -8,20 +8,21 @@ from .config import settings
 
 logger = logging.getLogger(__name__)
 
-_client: AsyncOpenAI | None = None
+# One client per persona — each persona has its own API key + model.
+_clients: dict[str, AsyncOpenAI] = {}
 
 
-def get_client() -> AsyncOpenAI:
-    global _client
-    if _client is None:
-        _client = AsyncOpenAI(
-            base_url=settings.llm_base_url,
-            api_key=settings.llm_api_key,
-            timeout=170.0,   # per request — reasoning model can legitimately need 90-120s
-            max_retries=0,   # no automatic retries — they double the wait
+def get_client(persona: str = "flora") -> AsyncOpenAI:
+    if persona not in _clients:
+        cfg = settings.llm_config_for(persona)
+        _clients[persona] = AsyncOpenAI(
+            base_url=cfg["base_url"],
+            api_key=cfg["api_key"],
+            timeout=170.0,
+            max_retries=0,
         )
-        logger.info("LLM client init: base_url=%s model=%s", settings.llm_base_url, settings.llm_model)
-    return _client
+        logger.info("LLM[%s] init: base=%s model=%s", persona, cfg["base_url"], cfg["model"])
+    return _clients[persona]
 
 
 def _extract_json(text: str) -> dict:
@@ -39,16 +40,20 @@ def _extract_json(text: str) -> dict:
     raise ValueError(f"No valid JSON found in LLM response: {text[:200]}...")
 
 
-async def chat_json(system: str, user: str, temperature: float = 0.4, max_tokens: int = 1500) -> dict:
-    """Send a chat completion and parse a JSON response.
-
-    max_tokens defaults to 1500 — reasoning models reserve thinking time
-    proportional to this budget, so keep it tight to the actual JSON size.
-    """
-    client = get_client()
+async def chat_json(
+    system: str,
+    user: str,
+    *,
+    persona: str = "flora",
+    temperature: float = 0.4,
+    max_tokens: int = 1500,
+) -> dict:
+    """Send a chat completion to the given persona's model and parse JSON."""
+    client = get_client(persona)
+    model = settings.llm_config_for(persona)["model"]
     try:
         response = await client.chat.completions.create(
-            model=settings.llm_model,
+            model=model,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -57,9 +62,9 @@ async def chat_json(system: str, user: str, temperature: float = 0.4, max_tokens
             max_tokens=max_tokens,
         )
     except Exception as e:
-        logger.error("LLM call failed: %s", e)
-        raise RuntimeError(f"LLM call failed: {e}") from e
+        logger.error("LLM[%s] call failed: %s", persona, e)
+        raise RuntimeError(f"LLM[{persona}] call failed: {e}") from e
 
     raw = response.choices[0].message.content
-    logger.debug("LLM raw response: %s", raw[:500])
+    logger.debug("LLM[%s] raw response: %s", persona, raw[:500])
     return _extract_json(raw)

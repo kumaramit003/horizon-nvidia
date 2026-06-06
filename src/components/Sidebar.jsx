@@ -4,6 +4,7 @@ import {
   ListChecks, Leaf, ArrowLeft, Database, ExternalLink, Sparkles
 } from 'lucide-react'
 import { Wordmark, AgentBadge } from './Brand'
+import WorkspaceSwitcher from './WorkspaceSwitcher'
 
 const items = [
   { id: 'idea',       label: 'The idea',          icon: Lightbulb, agent: 'flora' },
@@ -15,7 +16,7 @@ const items = [
   { id: 'agents',     label: 'Flora & Finn',      icon: Leaf,      agent: 'both' },
 ]
 
-export default function Sidebar({ active, onChange, onBackToIntake }) {
+export default function Sidebar({ active, onChange, onBackToIntake, discoveryId, onSwitchWorkspace }) {
   const activeAgent = items.find(i => i.id === active)?.agent
 
   return (
@@ -34,22 +35,12 @@ export default function Sidebar({ active, onChange, onBackToIntake }) {
       </div>
 
       <div className="px-3 pt-4">
-        <div className="rounded-2xl bg-white p-4 shadow-soft">
-          <div className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500">Workspace</div>
-          <div className="mt-1 display text-[18px] leading-tight text-forest-500">Halal Healthy Lunch</div>
-          <div className="mt-3 flex items-center gap-2">
-            {activeAgent === 'finn' ? (
-              <AgentBadge who="finn" status="discovering" />
-            ) : activeAgent === 'flora' ? (
-              <AgentBadge who="flora" status="researching" />
-            ) : (
-              <>
-                <AgentBadge who="finn" status="ready" />
-                <AgentBadge who="flora" status="ready" />
-              </>
-            )}
-          </div>
-        </div>
+        <WorkspaceSwitcher
+          currentId={discoveryId}
+          activeAgent={activeAgent}
+          onSwitch={onSwitchWorkspace}
+          onNew={onBackToIntake}
+        />
       </div>
 
       <nav className="mt-4 flex-1 overflow-y-auto px-2.5">

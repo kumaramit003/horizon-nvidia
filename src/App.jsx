@@ -115,12 +115,31 @@ function AuthedApp({ user, onSignOut }) {
 
   return (
     <div className="relative flex min-h-screen w-full bg-cream-100 text-ink-900">
-      <Sidebar active={page} onChange={setPage} onBackToIntake={() => {
-        sessionStorage.removeItem('discoveryId')
-        setDiscoveryId(null)
-        setDashboard(null)
-        setStage('intake')
-      }} />
+      <Sidebar
+        active={page}
+        onChange={setPage}
+        discoveryId={discoveryId}
+        onSwitchWorkspace={async (newId) => {
+          setLoading(true)
+          try {
+            const data = await api.getDashboard(newId)
+            setDiscoveryId(newId)
+            sessionStorage.setItem('discoveryId', newId)
+            setDashboard(data)
+            setPage('idea')
+          } catch (e) {
+            console.warn('Failed to switch workspace', e)
+          } finally {
+            setLoading(false)
+          }
+        }}
+        onBackToIntake={() => {
+          sessionStorage.removeItem('discoveryId')
+          setDiscoveryId(null)
+          setDashboard(null)
+          setStage('intake')
+        }}
+      />
 
       <main className="flex min-w-0 flex-1 flex-col">
         <TopBar page={page} recentVoice={recentVoice} user={user} onSignOut={onSignOut} />

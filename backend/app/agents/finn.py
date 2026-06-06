@@ -237,7 +237,7 @@ async def run_finn(idea_profile: dict, conversation: list[dict]) -> dict:
             logger.info("[finn:%s] starting (max_tokens=%d, temp=%s)", label, max_tokens, temp)
             try:
                 result = await asyncio.wait_for(
-                    chat_json(system, context, temperature=temp, max_tokens=max_tokens),
+                    chat_json(system, context, persona="finn", temperature=temp, max_tokens=max_tokens),
                     timeout=MODULE_TIMEOUT,
                 )
                 elapsed = time.time() - start
