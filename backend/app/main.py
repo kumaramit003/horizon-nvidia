@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -6,6 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .database import close_db, connect_db
 from .routers import auth, discoveries, flora, voice
+
+# Make our app loggers actually show up in `docker logs`. Without this,
+# uvicorn only emits its own access lines and our pipeline/finn/flora
+# logger.info/logger.exception calls are silently dropped.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s | %(message)s",
+)
 
 
 @asynccontextmanager
