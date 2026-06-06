@@ -20,7 +20,7 @@ go:
     @docker compose down --remove-orphans > /dev/null 2>&1 || true
     @./scripts/check-ports.sh || (echo ""; echo "✗ A port is already in use. Free it (e.g. \`lsof -nP -iTCP:<port> -sTCP:LISTEN\`) and re-run."; exit 1)
     @echo "→ Building and starting the stack..."
-    docker compose up --build -d
+    docker compose up --build -d --force-recreate
     @echo ""
     @echo "→ Waiting for the backend to come up..."
     @until curl -fsS http://localhost:8001/api/health > /dev/null 2>&1; do sleep 1; printf "."; done
@@ -59,7 +59,11 @@ clean:
 # Rebuild from scratch.
 rebuild:
     docker compose build --no-cache
-    docker compose up -d
+    docker compose up -d --force-recreate
+
+# Reload .env without rebuilding (changes env vars, recreates containers).
+env-reload:
+    docker compose up -d --force-recreate
 
 # ── Logs ───────────────────────────────────────────────────────────────────
 
