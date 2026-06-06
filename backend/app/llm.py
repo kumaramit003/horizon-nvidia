@@ -111,4 +111,13 @@ async def chat_json(
         )
 
     logger.debug("LLM[%s] raw response (%d chars, finish=%s): %s", persona, len(raw), finish, raw[:500])
-    return _extract_json(raw)
+    try:
+        return _extract_json(raw)
+    except ValueError as e:
+        # Log what the model actually returned so we can see why it didn't
+        # parse (prose wrapping, truncated JSON, refusal, etc.).
+        logger.error(
+            "LLM[%s] JSON parse failed (%s). finish=%s, len=%d. Raw head: %s ... tail: %s",
+            persona, e, finish, len(raw), raw[:800], raw[-300:],
+        )
+        raise
