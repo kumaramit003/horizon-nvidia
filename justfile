@@ -113,6 +113,16 @@ build:
 doctor:
     @./scripts/check-ports.sh
 
+# Delete all discoveries (workspaces). Keeps users/auth intact.
+reset-workspaces:
+    @docker exec horizon-mongo-1 mongosh --quiet founderos --eval 'print("deleted: " + db.discoveries.deleteMany({}).deletedCount)' \
+      || docker exec hackathon-mongo-1 mongosh --quiet founderos --eval 'print("deleted: " + db.discoveries.deleteMany({}).deletedCount)'
+
+# Nuke the entire Mongo volume (workspaces + users). Total reset.
+reset-all:
+    docker compose down -v
+    @echo "Mongo volume deleted. Run 'just go' to start fresh."
+
 # Show pipeline status: latest discovery docs + recent backend log lines.
 status:
     @echo "→ Latest 3 discoveries in Mongo:"
