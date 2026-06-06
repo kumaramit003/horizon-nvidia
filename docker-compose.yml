@@ -1,6 +1,7 @@
 services:
   mongo:
     image: mongo:7
+    restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
@@ -13,6 +14,7 @@ services:
 
   backend:
     build: ./backend
+    restart: unless-stopped
     # Host binding moved to 8001 so we don't collide with the NIM, which
     # also listens on 8000. Inside the docker network the backend still
     # uses port 8000 (that's what nginx in the frontend container proxies to).
@@ -55,6 +57,7 @@ services:
       context: .
       args:
         VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
+    restart: unless-stopped
     ports:
       - "3001:80"
     depends_on:
