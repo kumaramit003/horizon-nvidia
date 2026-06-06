@@ -46,6 +46,7 @@ function AuthedApp({ user, onSignOut }) {
   const [sections, setSections] = useState({}) // per-section status map
   const [wsStatus, setWsStatus] = useState(null) // overall workspace status
   const [loading, setLoading] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const pollStopRef = useRef(null)
 
   // Stop any in-flight poller (on switch / unmount / new workspace).
@@ -183,10 +184,11 @@ function AuthedApp({ user, onSignOut }) {
   const PageComponent = pages[page]
 
   return (
-    <div className="relative flex min-h-screen w-full bg-cream-100 text-ink-900">
-      <Sidebar
+    <div className="relative flex h-screen w-full overflow-hidden bg-cream-100 text-ink-900">
+      {sidebarOpen && <Sidebar
         active={page}
         onChange={setPage}
+        onCollapse={() => setSidebarOpen(false)}
         discoveryId={discoveryId}
         onSwitchWorkspace={async (newId) => {
           setLoading(true)
@@ -209,7 +211,7 @@ function AuthedApp({ user, onSignOut }) {
           setWsStatus(null)
           setStage('intake')
         }}
-      />
+      />}
 
       <main className="flex min-w-0 flex-1 flex-col">
         <TopBar
@@ -218,6 +220,8 @@ function AuthedApp({ user, onSignOut }) {
           user={user}
           onSignOut={onSignOut}
           workspaceName={dashboard?.idea?.title || ''}
+          sidebarOpen={sidebarOpen}
+          onToggleSidebar={() => setSidebarOpen(o => !o)}
         />
         {(() => {
           const updating = Object.values(sections || {}).filter(s => s === 'processing')

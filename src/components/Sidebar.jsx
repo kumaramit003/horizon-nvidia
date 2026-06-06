@@ -1,7 +1,7 @@
 import React from 'react'
 import {
   Lightbulb, Users, LineChart, MapPin, PoundSterling,
-  ListChecks, Leaf, ArrowLeft, Database, ExternalLink, Sparkles, Swords
+  ListChecks, Leaf, ArrowLeft, Database, ExternalLink, Sparkles, Swords, PanelLeftClose
 } from 'lucide-react'
 import { Wordmark, AgentBadge } from './Brand'
 import WorkspaceSwitcher from './WorkspaceSwitcher'
@@ -17,13 +17,22 @@ const items = [
   { id: 'agents',      label: 'Flora & Finn',      icon: Leaf,          agent: 'both' },
 ]
 
-export default function Sidebar({ active, onChange, onBackToIntake, discoveryId, onSwitchWorkspace }) {
+export default function Sidebar({ active, onChange, onBackToIntake, discoveryId, onSwitchWorkspace, onCollapse }) {
   const activeAgent = items.find(i => i.id === active)?.agent
 
   return (
     <aside className="flex h-screen w-[260px] shrink-0 flex-col border-r border-black/[0.06] bg-cream-50/80 backdrop-blur-xl">
-      <div className="px-5 pt-6 pb-5">
+      <div className="flex items-center justify-between px-5 pt-6 pb-5">
         <Wordmark size="md" />
+        {onCollapse && (
+          <button
+            onClick={onCollapse}
+            title="Hide menu"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-ink-400 transition-colors hover:bg-white hover:text-forest-500"
+          >
+            <PanelLeftClose size={15} />
+          </button>
+        )}
       </div>
 
       <div className="px-3 pb-1">

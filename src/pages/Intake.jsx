@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { Wordmark, LeafMark, Tagline } from '../components/Brand'
 import { AgentFace } from '../components/AgentFace'
+import GardenProgress from '../components/GardenProgress'
 import { api } from '../lib/api'
 import { speakWithElevenLabs } from '../lib/voiceApi'
 import { createRecorder, transcribe, isRecordingSupported, requestMicPermission } from '../lib/recorder'
@@ -385,13 +386,7 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
         ) : pipelineDone ? (
           <Ready />
         ) : analysing ? (
-          <>
-            <AgentFace state="thinking" who="finn" size={200} />
-            <div className="mt-5 text-[11.5px] font-medium uppercase tracking-[0.18em] text-ink-500 text-center">
-              Flora &amp; Finn are building your plan
-            </div>
-            <div className="mt-8 w-full max-w-[640px]"><Analysing /></div>
-          </>
+          <div className="w-full max-w-[680px]"><Analysing /></div>
         ) : (
           <>
             <div
@@ -617,91 +612,15 @@ function StartVoice({ onStart, onOpenWorkspace }) {
 
 function Analysing() {
   const STEPS = [
-    'Flora analysing your conversation',
-    'Building your idea profile & clarity score',
-    'Finn researching target audience',
-    'Validating market signals against London data',
-    'Comparing London locations',
-    'Estimating costs & matching grants',
-    'Drafting your 7-day launch plan',
+    'Idea profile',
+    'Who buys',
+    'Worth doing?',
+    'Competition',
+    'Where to launch',
+    'Money & grants',
+    'Your 7-day plan',
   ]
-  const FINAL_MESSAGES = [
-    'Finn is putting it all together…',
-    'Cross-checking the London datasets…',
-    'Almost there — sharpening the plan…',
-    'Finn is double-checking the numbers…',
-  ]
-  const [stage, setStage] = useState(0)
-  const [finalMsg, setFinalMsg] = useState(0)
-
-  useEffect(() => {
-    if (stage >= STEPS.length - 1) return
-    const delay = stage === 0 ? 4000 : 5000
-    const t = setTimeout(() => setStage(s => s + 1), delay)
-    return () => clearTimeout(t)
-  }, [stage])
-
-  // After the steps finish, rotate a friendly "still working" message so the
-  // UI doesn't look frozen if the backend is still crunching.
-  useEffect(() => {
-    if (stage < STEPS.length - 1) return
-    const t = setInterval(() => {
-      setFinalMsg(m => (m + 1) % FINAL_MESSAGES.length)
-    }, 4500)
-    return () => clearInterval(t)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage])
-
-  const atEnd = stage >= STEPS.length - 1
-
-  return (
-    <div className="text-center">
-      <p className="display text-[26px] leading-[1.2] text-forest-500">
-        Give me a moment. <span className="italic-accent text-sage-500">Flora &amp; Finn are working for you.</span>
-      </p>
-      <ul className="mt-8 mx-auto max-w-[480px] space-y-2 text-left">
-        {STEPS.map((s, i) => {
-          const done = i < stage || (atEnd && i === stage)
-          const active = i === stage && !atEnd
-          return (
-            <li
-              key={s}
-              className={`flex items-center gap-3 rounded-full border px-4 py-2 text-[13px] transition-all duration-500
-                ${done   ? 'border-sage-200 bg-sage-50 text-forest-500 opacity-90' :
-                  active ? 'border-sage-300 bg-white text-forest-500 shadow-soft' :
-                           'border-transparent bg-transparent text-ink-300'}`}
-            >
-              <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] font-bold
-                ${done ? 'bg-sage-500 text-white' : active ? 'bg-forest-500 text-white animate-breathe' : 'bg-cream-200 text-ink-400'}`}>
-                {done ? '✓' : i + 1}
-              </span>
-              {s}
-              {active && (
-                <span className="ml-auto inline-flex gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '120ms' }} />
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '240ms' }} />
-                </span>
-              )}
-            </li>
-          )
-        })}
-      </ul>
-      {atEnd && (
-        <div className="mt-6 flex flex-col items-center gap-2.5 animate-[fadeIn_0.5s_ease]">
-          <span className="inline-flex gap-1">
-            <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" />
-            <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '150ms' }} />
-            <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '300ms' }} />
-          </span>
-          <div key={finalMsg} className="text-[13px] text-forest-500 animate-[fadeIn_0.5s_ease]">
-            {FINAL_MESSAGES[finalMsg]}
-          </div>
-          <div className="text-[11px] text-ink-400">This can take up to a minute on longer conversations.</div>
-        </div>
-      )}
-    </div>
-  )
+  return <GardenProgress steps={STEPS} intervalMs={2600} />
 }
 
 function Ready() {
