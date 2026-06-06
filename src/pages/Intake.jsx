@@ -6,12 +6,12 @@ import {
 import { Wordmark, LeafMark, Tagline } from '../components/Brand'
 import { api } from '../lib/api'
 import { speakWithElevenLabs } from '../lib/voiceApi'
-import { createRecorder, transcribe, isRecordingSupported } from '../lib/recorder'
+import { createRecorder, transcribe, isRecordingSupported, requestMicPermission } from '../lib/recorder'
 
 // ─── Visuals ────────────────────────────────────────────────────────────────
 
 function Orb({ state, who = 'flora' }) {
-  const grad = who === 'flora' ? 'gradient-orb-flora' : 'gradient-orb-finn'
+  const grad = state === 'listening' ? 'gradient-orb-listening' : (who === 'flora' ? 'gradient-orb-flora' : 'gradient-orb-finn')
   return (
     <div className="relative grid place-items-center" style={{ width: 220, height: 220 }}>
       <span className={`absolute inset-0 rounded-full ${grad} opacity-20 blur-3xl animate-breathe`} />
@@ -22,20 +22,47 @@ function Orb({ state, who = 'flora' }) {
 
       {state !== 'idle' && (
         <>
-          <span className="absolute inset-0 rounded-full border border-sage-300/50 animate-ringOut" />
-          <span className="absolute inset-0 rounded-full border border-sage-300/40 animate-ringOut" style={{ animationDelay: '800ms' }} />
+          <span className={`absolute inset-0 rounded-full border ${state === 'listening' ? 'border-peach-300/60' : 'border-sage-300/50'} animate-ringOut`} />
+          <span className={`absolute inset-0 rounded-full border ${state === 'listening' ? 'border-peach-300/50' : 'border-sage-300/40'} animate-ringOut`} style={{ animationDelay: '800ms' }} />
         </>
       )}
 
       <div className="relative flex flex-col items-center text-white">
-        <LeafMark size={22} className="opacity-95 drop-shadow" />
+        {state === 'listening'
+          ? <Mic size={22} className="opacity-95 drop-shadow" />
+          : <LeafMark size={22} className="opacity-95 drop-shadow" />}
         <div className="mt-1.5 text-[9.5px] font-medium uppercase tracking-[0.22em] text-white/90">
           {state === 'thinking' ? (who === 'flora' ? 'Flora thinking' : 'Finn working') :
            state === 'speaking' ? (who === 'flora' ? 'Flora speaking' : 'Finn speaking') :
+           state === 'listening' ? 'Listening' :
            state === 'waiting'  ? 'Your turn' :
            who === 'flora' ? 'Flora' : 'Finn'}
         </div>
       </div>
+    </div>
+  )
+}
+
+// Compact audio-reactive waveform shown under the orb while listening.
+function ListeningBars({ level = 0 }) {
+  // 9 bars; each bar's animated baseline differs so even at silence it breathes
+  const bars = 9
+  return (
+    <div className="mt-4 flex h-8 items-center gap-[3px]">
+      {Array.from({ length: bars }).map((_, i) => {
+        // Center bars react more; edges less
+        const centerWeight = 1 - Math.abs(i - (bars - 1) / 2) / ((bars - 1) / 2) * 0.4
+        const minH = 14 // px when totally silent
+        const maxH = 28
+        const h = minH + Math.max(0, Math.min(1, level)) * (maxH - minH) * centerWeight
+        return (
+          <span
+            key={i}
+            className="w-[3.5px] rounded-full bg-forest-500 transition-[height] duration-100 ease-out"
+            style={{ height: `${h}px`, opacity: 0.45 + centerWeight * 0.55 }}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -68,17 +95,18 @@ function GatheredPips({ gathered }) {
 }
 
 // Short verbal stalls Flora speaks while the LLM is generating her real reply.
-// Kept very short so they don't outlast the real response.
+// All phrases trail off ("…") so they feel like she's mid-thought, not blocked.
 const STALLS = [
   "Mmm…",
-  "Hmm, okay.",
-  "Right, give me a sec.",
-  "Oh, okay okay.",
-  "Mmhm, let me think.",
-  "Got it, hold on.",
-  "Wait, let me sit with that.",
-  "Okay, interesting.",
-  "Mmm, right.",
+  "Hmm…",
+  "Okay, so…",
+  "Right, so…",
+  "Mmhm…",
+  "Hmm, let me see…",
+  "Okay, walking with you on this…",
+  "So, thinking…",
+  "Mmm, okay…",
+  "Right, thinking out loud…",
 ]
 
 function pickStall() {
@@ -103,12 +131,17 @@ export default function Intake({ onComplete }) {
   const [micState, setMicState] = useState('idle') // idle | recording | transcribing
   const [micError, setMicError] = useState('')
   const [floraStall, setFloraStall] = useState('') // verbal filler while thinking
+  const [micLevel, setMicLevel] = useState(0) // 0..1, drives the waveform bars
+  const [floraAudioPlaying, setFloraAudioPlaying] = useState(false)
   const inputRef = useRef(null)
   const chatEndRef = useRef(null)
   const spokenMessageRef = useRef(null)
   const recorderRef = useRef(null)
   const stallControllerRef = useRef(null)
   const stallAudioRef = useRef(null)
+  const micStreamRef = useRef(null)
+  const vadFrameRef = useRef(null)
+  const vadAcRef = useRef(null)
   const micSupported = isRecordingSupported()
 
   // ── Stall audio: short verbal filler while Flora is thinking ──
@@ -197,13 +230,17 @@ export default function Intake({ onComplete }) {
     let audioUrl
 
     setVoiceError('')
+    setFloraAudioPlaying(true)
     speakWithElevenLabs({ text: floraMessage, persona: 'flora', signal: controller.signal })
       .then(blob => {
         audioUrl = URL.createObjectURL(blob)
         audio = new Audio(audioUrl)
+        audio.onended = () => setFloraAudioPlaying(false)
+        audio.onerror = () => setFloraAudioPlaying(false)
         return audio.play()
       })
       .catch(err => {
+        setFloraAudioPlaying(false)
         if (err.name !== 'AbortError') setVoiceError(err.message)
       })
 
@@ -211,6 +248,7 @@ export default function Intake({ onComplete }) {
       controller.abort()
       if (audio) audio.pause()
       if (audioUrl) URL.revokeObjectURL(audioUrl)
+      setFloraAudioPlaying(false)
     }
   }, [floraMessage, floraThinking])
 
@@ -264,43 +302,135 @@ export default function Intake({ onComplete }) {
     return submitAnswer(userInput)
   }
 
-  // ── Microphone: tap to talk ──
-  const startRecording = async () => {
-    if (floraTyping || floraThinking || micState !== 'idle') return
+  // ── Microphone: auto-listen on Flora's turn end, VAD-based auto-stop ──
+  const stopVadLoop = () => {
+    if (vadFrameRef.current) {
+      cancelAnimationFrame(vadFrameRef.current)
+      vadFrameRef.current = null
+    }
+    if (vadAcRef.current) {
+      vadAcRef.current.close().catch(() => {})
+      vadAcRef.current = null
+    }
+    setMicLevel(0)
+  }
+
+  const startListening = async () => {
+    if (!micSupported) return
+    if (floraTyping || floraThinking || floraAudioPlaying) return
+    if (micState !== 'idle') return
+
     setMicError('')
     try {
-      const rec = await createRecorder()
+      const stream = micStreamRef.current || await requestMicPermission()
+      micStreamRef.current = stream
+
+      const rec = await createRecorder({ stream })
       recorderRef.current = rec
       setMicState('recording')
+
+      // VAD: build an analyser on the shared stream
+      const AC = window.AudioContext || window.webkitAudioContext
+      const ac = new AC()
+      const source = ac.createMediaStreamSource(stream)
+      const analyser = ac.createAnalyser()
+      analyser.fftSize = 256
+      analyser.smoothingTimeConstant = 0.7
+      source.connect(analyser)
+      vadAcRef.current = ac
+
+      const data = new Uint8Array(analyser.frequencyBinCount)
+      const SILENCE_THRESHOLD = 12      // avg byte freq below this = silence
+      const MIN_SPEECH_MS = 350         // need at least this much voiced audio before counting silence
+      const SILENCE_TO_STOP_MS = 1400   // this much silence after speech → auto-stop
+      const HARD_STOP_MS = 45000        // 45s upper bound
+
+      let spokeAt = 0
+      let silenceAt = 0
+      const startTs = performance.now()
+
+      const tick = () => {
+        analyser.getByteFrequencyData(data)
+        let sum = 0
+        for (let i = 0; i < data.length; i++) sum += data[i]
+        const avg = sum / data.length
+        setMicLevel(Math.min(1, avg / 80))
+
+        const now = performance.now()
+        if (avg > SILENCE_THRESHOLD) {
+          if (!spokeAt) spokeAt = now
+          silenceAt = 0
+        } else if (spokeAt && (now - spokeAt) > MIN_SPEECH_MS) {
+          if (!silenceAt) silenceAt = now
+          else if ((now - silenceAt) > SILENCE_TO_STOP_MS) {
+            finishListening()
+            return
+          }
+        }
+        if (now - startTs > HARD_STOP_MS) {
+          finishListening()
+          return
+        }
+        vadFrameRef.current = requestAnimationFrame(tick)
+      }
+      vadFrameRef.current = requestAnimationFrame(tick)
     } catch (err) {
-      setMicError(err.message || 'Microphone unavailable')
+      setMicError(err?.message || 'Microphone unavailable')
+      setMicState('idle')
     }
   }
 
-  const stopRecording = async () => {
+  const finishListening = async () => {
     const rec = recorderRef.current
     if (!rec) return
     recorderRef.current = null
+    stopVadLoop()
     setMicState('transcribing')
     try {
       const blob = await rec.stop()
       const text = await transcribe(blob)
       setMicState('idle')
       if (text) {
-        // Show what was heard, then submit it as the answer
         setUserInput(text)
         await submitAnswer(text)
       }
     } catch (err) {
       setMicState('idle')
-      setMicError(err.message || 'Transcription failed')
+      setMicError(err?.message || 'Transcription failed')
     }
   }
 
-  const toggleMic = () => {
-    if (micState === 'recording') stopRecording()
-    else if (micState === 'idle') startRecording()
+  const cancelListening = () => {
+    const rec = recorderRef.current
+    recorderRef.current = null
+    stopVadLoop()
+    setMicState('idle')
+    if (rec) rec.cancel()
   }
+
+  // Auto-start listening once Flora has finished her turn (no audio, no
+  // typewriter, no thinking, not already recording).
+  useEffect(() => {
+    if (!started) return
+    if (!micSupported) return
+    if (floraTyping || floraThinking || floraAudioPlaying) return
+    if (micState !== 'idle') return
+    if (!floraMessage) return
+    // Small grace period so the tail of Flora's audio doesn't trigger VAD
+    const t = setTimeout(() => { startListening() }, 350)
+    return () => clearTimeout(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [started, floraMessage, floraTyping, floraThinking, floraAudioPlaying])
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    stopVadLoop()
+    if (recorderRef.current) recorderRef.current.cancel()
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(t => t.stop())
+      micStreamRef.current = null
+    }
+  }, [])
 
   // ── Error state ──
   if (error) {
@@ -353,14 +483,35 @@ export default function Intake({ onComplete }) {
           </>
         ) : (
           <>
-            <Orb
-              state={floraThinking ? 'thinking' : floraTyping ? 'speaking' : 'waiting'}
-              who="flora"
-            />
+            <div
+              onClick={micState === 'recording' ? finishListening : undefined}
+              className={micState === 'recording' ? 'cursor-pointer' : ''}
+              title={micState === 'recording' ? 'Tap to stop and send' : ''}
+            >
+              <Orb
+                state={
+                  floraThinking ? 'thinking'
+                  : floraTyping ? 'speaking'
+                  : micState === 'recording' ? 'listening'
+                  : micState === 'transcribing' ? 'thinking'
+                  : 'waiting'
+                }
+                who="flora"
+              />
+            </div>
 
             <div className="mt-4 text-[11px] font-medium uppercase tracking-[0.18em] text-ink-500">
-              {floraThinking ? 'Flora is thinking…' : floraTyping ? 'Flora is speaking' : 'Your turn · type below'}
+              {floraThinking ? 'Flora is thinking…'
+                : floraTyping ? 'Flora is speaking'
+                : micState === 'recording' ? 'Listening · just speak'
+                : micState === 'transcribing' ? 'Catching that…'
+                : 'Your turn'}
             </div>
+
+            {/* Audio-reactive bars below the orb when listening */}
+            {micState === 'recording' && (
+              <ListeningBars level={micLevel} />
+            )}
 
             <div className="mt-4">
               <GatheredPips gathered={gathered} />
@@ -416,51 +567,17 @@ export default function Intake({ onComplete }) {
 
             {!floraTyping && !floraThinking && (
               <div className="mt-6 w-full max-w-[560px] animate-[fadeIn_0.4s_ease] flex flex-col items-center">
-                {/* Primary action: voice */}
-                {micSupported && (
-                  <button
-                    type="button"
-                    onClick={toggleMic}
-                    disabled={micState === 'transcribing'}
-                    className={`group relative grid h-20 w-20 place-items-center rounded-full shadow-lift transition-all
-                      ${micState === 'recording'
-                        ? 'bg-rose-500 hover:bg-rose-600 scale-105'
-                        : micState === 'transcribing'
-                        ? 'bg-sage-400 cursor-wait'
-                        : 'bg-forest-500 hover:bg-forest-600 hover:scale-105'}`}
-                  >
-                    {micState === 'recording' && (
-                      <>
-                        <span className="absolute inset-0 rounded-full bg-rose-500 opacity-40 animate-ringOut" />
-                        <span className="absolute inset-0 rounded-full bg-rose-500 opacity-30 animate-ringOut" style={{ animationDelay: '600ms' }} />
-                      </>
-                    )}
-                    {micState === 'transcribing'
-                      ? <Loader2 size={28} className="text-white animate-spin" />
-                      : micState === 'recording'
-                        ? <StopCircle size={32} className="text-white" />
-                        : <Mic size={28} className="text-white" />}
-                  </button>
-                )}
-
-                <div className="mt-3 text-center text-[12.5px] font-medium text-ink-600">
-                  {micState === 'recording'
-                    ? 'Listening… tap to send'
-                    : micState === 'transcribing'
-                      ? 'Transcribing…'
-                      : micSupported
-                        ? 'Tap the mic to talk to Flora'
-                        : 'Voice not supported in this browser — type below'}
-                </div>
-
                 {micError && (
-                  <div className="mt-3 rounded-full border border-butter-200 bg-butter-100 px-4 py-1.5 text-[11.5px] text-ink-700">
+                  <div className="mt-1 rounded-full border border-butter-200 bg-butter-100 px-4 py-1.5 text-[11.5px] text-ink-700">
                     {micError}
                   </div>
                 )}
 
-                {/* Secondary action: text (kept for testing / fallback) */}
-                <details className="mt-6 w-full text-[12px] text-ink-400">
+                {/* Voice is the primary interaction — no button. The orb above
+                    is the listening visual, the bars are audio-reactive, and
+                    tapping the orb stops recording. Text input is a discreet
+                    fallback for testing / unsupported browsers. */}
+                <details className="mt-4 w-full text-[11.5px] text-ink-400">
                   <summary className="cursor-pointer text-center hover:text-ink-600 select-none">
                     Or type instead
                   </summary>

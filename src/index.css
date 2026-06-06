@@ -89,6 +89,15 @@ body {
     radial-gradient(circle at 50% 80%, #FFB582 0%, transparent 60%),
     linear-gradient(135deg, #FF9259 0%, #FF6B3D 100%);
 }
+/* Listening state — warm peach/butter, signals 'your turn' without alarm. */
+.gradient-orb-listening {
+  background:
+    radial-gradient(circle at 30% 25%, #FFE9D6 0%, transparent 55%),
+    radial-gradient(circle at 75% 70%, #FFF1B8 0%, transparent 55%),
+    radial-gradient(circle at 50% 80%, #FFB582 0%, transparent 60%),
+    linear-gradient(135deg, #FF9259 0%, #FF6B3D 100%);
+}
+
 /* Finn — Research & Planning. Grounded, strong, structured. Deep forest + sage. */
 .gradient-orb-finn {
   background:

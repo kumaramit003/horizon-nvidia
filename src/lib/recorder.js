@@ -26,10 +26,18 @@ function pickMime() {
   return ''
 }
 
-export async function createRecorder() {
+// Prompt for mic permission early. Resolves with a stream the caller can
+// keep open across multiple recordings, OR throws if denied.
+export async function requestMicPermission() {
+  if (!isRecordingSupported()) throw new Error('Microphone not supported in this browser')
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  return stream
+}
+
+export async function createRecorder({ stream: existingStream } = {}) {
   if (!isRecordingSupported()) throw new Error('Microphone not supported in this browser')
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  const stream = existingStream || await navigator.mediaDevices.getUserMedia({ audio: true })
   const mimeType = pickMime()
   const options = mimeType ? { mimeType } : undefined
   const recorder = new MediaRecorder(stream, options)
@@ -42,10 +50,12 @@ export async function createRecorder() {
   recorder.start(250) // gather data every 250ms
 
   return {
+    stream,
     stop() {
       return new Promise((resolve) => {
         recorder.onstop = () => {
-          stream.getTracks().forEach(t => t.stop())
+          // Only stop the underlying stream tracks if we own this stream.
+          if (!existingStream) stream.getTracks().forEach(t => t.stop())
           const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' })
           resolve(blob)
         }
@@ -53,7 +63,7 @@ export async function createRecorder() {
       })
     },
     cancel() {
-      stream.getTracks().forEach(t => t.stop())
+      if (!existingStream) stream.getTracks().forEach(t => t.stop())
       try { recorder.stop() } catch {}
     },
     get mimeType() { return recorder.mimeType },
