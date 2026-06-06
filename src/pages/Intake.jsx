@@ -113,6 +113,10 @@ function pickStall() {
   return STALLS[Math.floor(Math.random() * STALLS.length)]
 }
 
+// Static opener — skips a slow LLM cold-start on page load. From the second
+// turn onwards the live LLM takes over.
+const FLORA_OPENER = "Hey, I'm Flora — so happy you're here! Tell me, what's the idea that's been rattling around in your head?"
+
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function Intake({ onComplete }) {
@@ -179,22 +183,11 @@ export default function Intake({ onComplete }) {
     }
   }
 
-  // ── Flora's opening turn ──
+  // ── Flora's opening turn — static so it shows up instantly ──
   useEffect(() => {
     if (!started) return
-    let cancelled = false
-    setFloraThinking(true)
-    api.floraChat([])
-      .then(res => {
-        if (cancelled) return
-        setFloraMessage(res.message)
-        setGathered(res.gathered || {})
-        setFloraThinking(false)
-      })
-      .catch(err => {
-        if (!cancelled) setError(err.message)
-      })
-    return () => { cancelled = true }
+    setFloraThinking(false)
+    setFloraMessage(FLORA_OPENER)
   }, [started])
 
   // ── Typewriter effect for each new Flora message ──
