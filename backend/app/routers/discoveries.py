@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from datetime import datetime
 from typing import Annotated
 
@@ -10,7 +12,13 @@ from ..database import get_db
 from ..models import DiscoveryCreate, DiscoverySummary
 from .auth import current_user
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/discoveries", tags=["discoveries"])
+
+# Keep a strong reference to in-flight background pipeline tasks so the event
+# loop doesn't garbage-collect them mid-run (asyncio only holds weak refs).
+_pipeline_tasks: set[asyncio.Task] = set()
 
 
 def _oid(id_str: str) -> ObjectId:
@@ -20,12 +28,51 @@ def _oid(id_str: str) -> ObjectId:
         raise HTTPException(400, "Invalid discovery ID")
 
 
+async def _run_pipeline_and_store(discovery_id: ObjectId, conversation: list[dict]) -> None:
+    """Run Flora → Finn and persist the result. Always leaves the doc in a
+    terminal state (``dashboard_ready`` or ``error``) so the frontend never
+    polls forever."""
+    db = get_db()
+    try:
+        dashboard = await run_discovery_pipeline(conversation)
+        # Promote the LLM-generated idea title to the workspace name so the
+        # sidebar/switcher don't show the founder's raw transcript.
+        title = ((dashboard.get("idea") or {}).get("title") or "").strip()
+        update = {
+            "dashboard": dashboard,
+            "status": "dashboard_ready",
+            "error": None,
+            "updated_at": datetime.utcnow(),
+        }
+        if title:
+            update["workspace_name"] = title[:80]
+        await db.discoveries.update_one({"_id": discovery_id}, {"$set": update})
+        logger.info("Pipeline complete for %s", discovery_id)
+    except Exception as e:  # noqa: BLE001 — must capture every failure
+        logger.exception("Pipeline failed for %s", discovery_id)
+        await db.discoveries.update_one(
+            {"_id": discovery_id},
+            {"$set": {
+                "status": "error",
+                "error": str(e),
+                "updated_at": datetime.utcnow(),
+            }},
+        )
+
+
+def _spawn_pipeline(discovery_id: ObjectId, conversation: list[dict]) -> None:
+    """Fire the pipeline as a background task and return immediately so the
+    HTTP request doesn't block for minutes on slow LLM gateways."""
+    task = asyncio.create_task(_run_pipeline_and_store(discovery_id, conversation))
+    _pipeline_tasks.add(task)
+    task.add_done_callback(_pipeline_tasks.discard)
+
+
 @router.post("", status_code=201)
 async def create_discovery(body: DiscoveryCreate, user: Annotated[dict, Depends(current_user)]):
     db = get_db()
     now = datetime.utcnow()
 
-    # Insert a placeholder so we can return the ID immediately if needed
     doc = {
         "workspace_name": body.workspace_name,
         "user_id": user["_id"],
@@ -38,37 +85,12 @@ async def create_discovery(body: DiscoveryCreate, user: Annotated[dict, Depends(
     result = await db.discoveries.insert_one(doc)
     discovery_id = result.inserted_id
 
-    # Run the real LLM pipeline (Flora → Finn). Pydantic models → plain dicts
-    # so the downstream agents can dict-index t['speaker']/t['text'].
+    # Pydantic models → plain dicts so downstream agents can index t['speaker'].
     conversation = [t.model_dump() for t in body.intake.conversation]
-    try:
-        dashboard = await run_discovery_pipeline(conversation)
-        # Promote the LLM-generated idea title to the workspace name so the
-        # sidebar/switcher don't show the founder's raw transcript.
-        title = ((dashboard.get("idea") or {}).get("title") or "").strip()
-        update = {
-            "dashboard": dashboard,
-            "status": "dashboard_ready",
-            "updated_at": datetime.utcnow(),
-        }
-        if title:
-            update["workspace_name"] = title[:80]
-        await db.discoveries.update_one(
-            {"_id": discovery_id},
-            {"$set": update},
-        )
-    except Exception as e:
-        await db.discoveries.update_one(
-            {"_id": discovery_id},
-            {"$set": {
-                "status": "error",
-                "error": str(e),
-                "updated_at": datetime.utcnow(),
-            }},
-        )
-        raise HTTPException(500, f"Pipeline failed: {e}")
+    _spawn_pipeline(discovery_id, conversation)
 
-    return {"id": str(discovery_id)}
+    # Return immediately; the frontend polls the discovery until it's ready.
+    return {"id": str(discovery_id), "status": "processing"}
 
 
 @router.get("")
@@ -161,25 +183,8 @@ async def refine_discovery(
         }},
     )
 
-    try:
-        dashboard = await run_discovery_pipeline(conversation)
-        title = ((dashboard.get("idea") or {}).get("title") or "").strip()
-        update = {
-            "dashboard": dashboard,
-            "status": "dashboard_ready",
-            "updated_at": datetime.utcnow(),
-        }
-        if title:
-            update["workspace_name"] = title[:80]
-        await db.discoveries.update_one({"_id": oid}, {"$set": update})
-    except Exception as e:
-        await db.discoveries.update_one(
-            {"_id": oid},
-            {"$set": {"status": "error", "error": str(e), "updated_at": datetime.utcnow()}},
-        )
-        raise HTTPException(500, f"Refine failed: {e}")
-
-    return {"ok": True, "id": discovery_id}
+    _spawn_pipeline(oid, conversation)
+    return {"ok": True, "id": discovery_id, "status": "processing"}
 
 
 @router.post("/{discovery_id}/rerun")
@@ -199,22 +204,5 @@ async def rerun_discovery(discovery_id: str, user: Annotated[dict, Depends(curre
         {"_id": oid}, {"$set": {"status": "processing", "updated_at": datetime.utcnow()}}
     )
 
-    try:
-        dashboard = await run_discovery_pipeline(conversation)
-        title = ((dashboard.get("idea") or {}).get("title") or "").strip()
-        update = {
-            "dashboard": dashboard,
-            "status": "dashboard_ready",
-            "updated_at": datetime.utcnow(),
-        }
-        if title:
-            update["workspace_name"] = title[:80]
-        await db.discoveries.update_one({"_id": oid}, {"$set": update})
-    except Exception as e:
-        await db.discoveries.update_one(
-            {"_id": oid},
-            {"$set": {"status": "error", "error": str(e), "updated_at": datetime.utcnow()}},
-        )
-        raise HTTPException(500, f"Rerun failed: {e}")
-
-    return {"ok": True, "id": discovery_id}
+    _spawn_pipeline(oid, list(conversation))
+    return {"ok": True, "id": discovery_id, "status": "processing"}

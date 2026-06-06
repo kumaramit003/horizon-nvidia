@@ -74,7 +74,7 @@ function AuthedApp({ user, onSignOut }) {
     if (saved) {
       setDiscoveryId(saved)
       setLoading(true)
-      api.getDashboard(saved)
+      api.waitForDashboard(saved)
         .then(data => {
           setDashboard(data)
           setStage('dashboard')
@@ -104,7 +104,9 @@ function AuthedApp({ user, onSignOut }) {
     setDiscoveryId(id)
     sessionStorage.setItem('discoveryId', id)
 
-    const data = await api.getDashboard(id)
+    // Pipeline runs in the background; poll until it's ready. Intake keeps
+    // showing its "analysing" animation while this promise is pending.
+    const data = await api.waitForDashboard(id)
     setDashboard(data)
     setStage('dashboard')
   }
@@ -125,7 +127,7 @@ function AuthedApp({ user, onSignOut }) {
   const loadExistingWorkspace = async (id) => {
     setLoading(true)
     try {
-      const data = await api.getDashboard(id)
+      const data = await api.waitForDashboard(id)
       setDiscoveryId(id)
       sessionStorage.setItem('discoveryId', id)
       setDashboard(data)
@@ -142,7 +144,7 @@ function AuthedApp({ user, onSignOut }) {
     setLoading(true)
     try {
       await api.rerunDiscovery(discoveryId)
-      const data = await api.getDashboard(discoveryId)
+      const data = await api.waitForDashboard(discoveryId)
       setDashboard(data)
     } catch (e) {
       console.warn('Re-run failed', e)
@@ -167,7 +169,7 @@ function AuthedApp({ user, onSignOut }) {
         onSwitchWorkspace={async (newId) => {
           setLoading(true)
           try {
-            const data = await api.getDashboard(newId)
+            const data = await api.waitForDashboard(newId)
             setDiscoveryId(newId)
             sessionStorage.setItem('discoveryId', newId)
             setDashboard(data)
@@ -211,7 +213,7 @@ function AuthedApp({ user, onSignOut }) {
           // Refresh the dashboard so the new sections render.
           if (discoveryId) {
             try {
-              const data = await api.getDashboard(discoveryId)
+              const data = await api.waitForDashboard(discoveryId)
               setDashboard(data)
             } catch (e) {
               console.warn('Failed to refresh dashboard after refine', e)

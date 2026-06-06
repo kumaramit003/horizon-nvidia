@@ -47,6 +47,8 @@ services:
       - FINN_BASE_URL=${FINN_BASE_URL:-}
       - FINN_API_KEY=${FINN_API_KEY:-}
       - FINN_MODEL=${FINN_MODEL:-}
+      - FINN_CONCURRENCY=${FINN_CONCURRENCY:-2}
+      - FINN_MODULE_TIMEOUT=${FINN_MODULE_TIMEOUT:-240}
       # ElevenLabs TTS (Flora + Finn voices). Leave blank to skip voice playback.
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
       - ELEVENLABS_VOICE_ID_FLORA=${ELEVENLABS_VOICE_ID_FLORA:-}

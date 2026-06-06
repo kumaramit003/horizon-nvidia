@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     finn_api_key: str = ""
     finn_model: str = ""
 
+    # Finn research tuning. Concurrency defaults low (2) to avoid thrashing a
+    # single-GPU NIM; raise it (e.g. 6) when Finn points at a scalable gateway.
+    # Timeout is per-module seconds — bump it for slow gateways.
+    finn_concurrency: int = 2
+    finn_module_timeout: int = 240
+
     def llm_config_for(self, persona: str) -> dict:
         """Return {api_key, base_url, model} for a given persona (flora|finn)."""
         # Dedicated Finn endpoint takes top priority when configured.

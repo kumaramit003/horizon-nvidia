@@ -232,11 +232,13 @@ async def run_finn(idea_profile, conversation) -> dict:
     import asyncio
     import time
 
-    MODULE_TIMEOUT = 180  # seconds — reasoning model needs room to think
-    # Limit GPU contention. The NIM is a single 30B reasoning model on one
-    # device; 6 concurrent inferences thrash it. 2 at a time empirically
-    # completes more reliably than 6 at once.
-    semaphore = asyncio.Semaphore(2)
+    from ..config import settings
+
+    # Per-module timeout + concurrency are configurable. Low concurrency suits
+    # a single-GPU NIM; raise FINN_CONCURRENCY when Finn uses a scalable
+    # gateway. Slow gateways (e.g. openclaw) need a longer timeout.
+    MODULE_TIMEOUT = settings.finn_module_timeout
+    semaphore = asyncio.Semaphore(max(1, settings.finn_concurrency))
 
     async def _run_module(label, system, temp, max_tokens):
         async with semaphore:

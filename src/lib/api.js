@@ -69,6 +69,26 @@ export const api = {
     return request(`/discoveries/${id}/dashboard`)
   },
 
+  // Poll a discovery until its pipeline reaches a terminal state. The pipeline
+  // now runs in the background (creation returns instantly), so the UI waits
+  // here instead of on one long-blocking HTTP request.
+  async waitForDashboard(id, { intervalMs = 3000, timeoutMs = 15 * 60 * 1000, onTick } = {}) {
+    const start = Date.now()
+    while (true) {
+      const doc = await this.getDiscovery(id)
+      const status = doc.status
+      if (onTick) onTick(doc)
+      if (status === 'dashboard_ready') return doc.dashboard || {}
+      if (status === 'error') {
+        throw new Error(doc.error || 'Analysis failed. Please try re-running.')
+      }
+      if (Date.now() - start > timeoutMs) {
+        throw new Error('Analysis is taking longer than expected. Please try again.')
+      }
+      await new Promise(r => setTimeout(r, intervalMs))
+    }
+  },
+
   updateDashboard(id, updates) {
     return request(`/discoveries/${id}/dashboard`, {
       method: 'PATCH',

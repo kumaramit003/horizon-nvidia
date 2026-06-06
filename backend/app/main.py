@@ -17,11 +17,40 @@ logging.basicConfig(
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_db()
+    await _recover_stale_discoveries()
     yield
     await close_db()
+
+
+async def _recover_stale_discoveries():
+    """A backend restart kills any in-flight pipeline background tasks, leaving
+    their discovery docs stuck at ``status: processing`` forever (the frontend
+    would poll endlessly). Flip those to ``error`` on boot so the UI can show a
+    retry instead of an infinite spinner."""
+    from .database import get_db
+
+    try:
+        db = get_db()
+        result = await db.discoveries.update_many(
+            {"status": "processing"},
+            {"$set": {
+                "status": "error",
+                "error": "Generation was interrupted by a server restart. Please re-run.",
+            }},
+        )
+        if result.modified_count:
+            logger.warning(
+                "Recovered %d stale 'processing' discoveries → 'error'",
+                result.modified_count,
+            )
+    except Exception:
+        logger.exception("Failed to recover stale discoveries on startup")
 
 
 app = FastAPI(
