@@ -123,7 +123,7 @@ export default function MarketValidation({ dashboard }) {
         <Card className="!p-7">
           <SectionHeader
             eyebrow="Evidence"
-            title="What Jill has actually seen"
+            title="What Finn has actually seen"
             right={<AskWhyButton>Sources</AskWhyButton>}
           />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

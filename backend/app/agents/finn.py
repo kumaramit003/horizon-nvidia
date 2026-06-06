@@ -220,41 +220,56 @@ async def run_finn(idea_profile: dict, conversation: list[dict]) -> dict:
         f"\nOriginal conversation:\n{transcript}"
     )
 
-    logger.info("Finn running all research modules")
+    logger.info("Finn running 6 research modules")
 
     import asyncio
+    import time
 
-    MODULE_TIMEOUT = 95  # seconds — matches the 90s LLM client timeout + a small grace
+    MODULE_TIMEOUT = 180  # seconds — reasoning model needs room to think
+    # Limit GPU contention. The NIM is a single 30B reasoning model on one
+    # device; 6 concurrent inferences thrash it. 2 at a time empirically
+    # completes more reliably than 6 at once.
+    semaphore = asyncio.Semaphore(2)
 
-    async def _run_module(label, system, temp, max_tokens=1500):
-        try:
-            result = await asyncio.wait_for(
-                chat_json(system, context, temperature=temp, max_tokens=max_tokens),
-                timeout=MODULE_TIMEOUT,
-            )
-            logger.info("Finn module '%s' OK (%d keys)", label, len(result))
-            return result
-        except asyncio.TimeoutError:
-            logger.error("Finn module '%s' TIMED OUT after %ss", label, MODULE_TIMEOUT)
-            return None
-        except Exception as e:
-            logger.error("Finn module '%s' FAILED: %s", label, e)
-            return None
+    async def _run_module(label, system, temp, max_tokens):
+        async with semaphore:
+            start = time.time()
+            logger.info("[finn:%s] starting (max_tokens=%d, temp=%s)", label, max_tokens, temp)
+            try:
+                result = await asyncio.wait_for(
+                    chat_json(system, context, temperature=temp, max_tokens=max_tokens),
+                    timeout=MODULE_TIMEOUT,
+                )
+                elapsed = time.time() - start
+                logger.info("[finn:%s] OK in %.1fs (%d top-level keys)", label, elapsed, len(result))
+                return result
+            except asyncio.TimeoutError:
+                elapsed = time.time() - start
+                logger.error("[finn:%s] TIMED OUT after %.1fs", label, elapsed)
+                return None
+            except Exception as e:
+                elapsed = time.time() - start
+                logger.error("[finn:%s] FAILED in %.1fs: %s", label, elapsed, e)
+                return None
 
-    # max_tokens per module sized to the JSON it actually produces — keeps
-    # the reasoning model's thinking time bounded.
+    # max_tokens needs to cover thinking AND JSON output for a reasoning model.
+    # Too low → JSON gets truncated mid-stream and parsing fails. 2500–3500
+    # is the sweet spot for these prompts.
     results = await asyncio.gather(
-        _run_module("audience",   SYSTEM_AUDIENCE,   0.3, max_tokens=1400),
-        _run_module("validation", SYSTEM_VALIDATION, 0.3, max_tokens=1500),
-        _run_module("locations",  SYSTEM_LOCATIONS,  0.3, max_tokens=1200),
-        _run_module("financials", SYSTEM_FINANCIALS, 0.3, max_tokens=1600),
-        _run_module("plan",       SYSTEM_PLAN,       0.3, max_tokens=1400),
-        _run_module("agents",     SYSTEM_AGENTS,     0.2, max_tokens=900),
+        _run_module("audience",   SYSTEM_AUDIENCE,   0.3, max_tokens=3000),
+        _run_module("validation", SYSTEM_VALIDATION, 0.3, max_tokens=3500),
+        _run_module("locations",  SYSTEM_LOCATIONS,  0.3, max_tokens=2500),
+        _run_module("financials", SYSTEM_FINANCIALS, 0.3, max_tokens=3000),
+        _run_module("plan",       SYSTEM_PLAN,       0.3, max_tokens=3000),
+        _run_module("agents",     SYSTEM_AGENTS,     0.2, max_tokens=2000),
     )
 
     dashboard = {}
-    for result in results:
+    succeeded = 0
+    for label, result in zip(["audience","validation","locations","financials","plan","agents"], results):
         if result is not None:
             dashboard.update(result)
+            succeeded += 1
+    logger.info("[finn] %d/6 modules succeeded", succeeded)
 
     return dashboard

@@ -17,7 +17,7 @@ def get_client() -> AsyncOpenAI:
         _client = AsyncOpenAI(
             base_url=settings.nvidia_base_url,
             api_key=settings.nvidia_api_key,
-            timeout=90.0,    # per request — fail fast, don't hang
+            timeout=170.0,   # per request — reasoning model can legitimately need 90-120s
             max_retries=0,   # no automatic retries — they double the wait
         )
     return _client
