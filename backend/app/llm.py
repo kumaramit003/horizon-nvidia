@@ -17,8 +17,8 @@ def get_client() -> AsyncOpenAI:
         _client = AsyncOpenAI(
             base_url=settings.nvidia_base_url,
             api_key=settings.nvidia_api_key,
-            timeout=120.0,  # per request — fail fast instead of hanging 10 min
-            max_retries=1,
+            timeout=90.0,    # per request — fail fast, don't hang
+            max_retries=0,   # no automatic retries — they double the wait
         )
     return _client
 
@@ -38,8 +38,12 @@ def _extract_json(text: str) -> dict:
     raise ValueError(f"No valid JSON found in LLM response: {text[:200]}...")
 
 
-async def chat_json(system: str, user: str, temperature: float = 0.4) -> dict:
-    """Send a chat completion and parse a JSON response."""
+async def chat_json(system: str, user: str, temperature: float = 0.4, max_tokens: int = 1500) -> dict:
+    """Send a chat completion and parse a JSON response.
+
+    max_tokens defaults to 1500 — reasoning models reserve thinking time
+    proportional to this budget, so keep it tight to the actual JSON size.
+    """
     client = get_client()
     try:
         response = await client.chat.completions.create(
@@ -49,7 +53,7 @@ async def chat_json(system: str, user: str, temperature: float = 0.4) -> dict:
                 {"role": "user", "content": user},
             ],
             temperature=temperature,
-            max_tokens=4096,
+            max_tokens=max_tokens,
         )
     except Exception as e:
         logger.error("LLM call failed: %s", e)

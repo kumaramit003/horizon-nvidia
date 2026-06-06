@@ -224,12 +224,12 @@ async def run_finn(idea_profile: dict, conversation: list[dict]) -> dict:
 
     import asyncio
 
-    MODULE_TIMEOUT = 150  # seconds — fail a single hung module instead of the whole run
+    MODULE_TIMEOUT = 95  # seconds — matches the 90s LLM client timeout + a small grace
 
-    async def _run_module(label, system, temp):
+    async def _run_module(label, system, temp, max_tokens=1500):
         try:
             result = await asyncio.wait_for(
-                chat_json(system, context, temperature=temp),
+                chat_json(system, context, temperature=temp, max_tokens=max_tokens),
                 timeout=MODULE_TIMEOUT,
             )
             logger.info("Finn module '%s' OK (%d keys)", label, len(result))
@@ -241,13 +241,15 @@ async def run_finn(idea_profile: dict, conversation: list[dict]) -> dict:
             logger.error("Finn module '%s' FAILED: %s", label, e)
             return None
 
+    # max_tokens per module sized to the JSON it actually produces — keeps
+    # the reasoning model's thinking time bounded.
     results = await asyncio.gather(
-        _run_module("audience",   SYSTEM_AUDIENCE,   0.4),
-        _run_module("validation", SYSTEM_VALIDATION, 0.4),
-        _run_module("locations",  SYSTEM_LOCATIONS,  0.4),
-        _run_module("financials", SYSTEM_FINANCIALS, 0.4),
-        _run_module("plan",       SYSTEM_PLAN,       0.4),
-        _run_module("agents",     SYSTEM_AGENTS,     0.3),
+        _run_module("audience",   SYSTEM_AUDIENCE,   0.3, max_tokens=1400),
+        _run_module("validation", SYSTEM_VALIDATION, 0.3, max_tokens=1500),
+        _run_module("locations",  SYSTEM_LOCATIONS,  0.3, max_tokens=1200),
+        _run_module("financials", SYSTEM_FINANCIALS, 0.3, max_tokens=1600),
+        _run_module("plan",       SYSTEM_PLAN,       0.3, max_tokens=1400),
+        _run_module("agents",     SYSTEM_AGENTS,     0.2, max_tokens=900),
     )
 
     dashboard = {}
