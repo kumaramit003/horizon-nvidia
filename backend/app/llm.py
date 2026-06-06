@@ -25,8 +25,12 @@ def get_client(persona: str = "flora") -> AsyncOpenAI:
     return _clients[persona]
 
 
-def _extract_json(text: str) -> dict:
-    """Pull the first JSON object or array from an LLM response, tolerating markdown fences."""
+def _extract_json(text) -> dict:
+    """Pull the first JSON object or array from an LLM response, tolerating markdown fences.
+    Always returns a dict — wraps arrays and raises ValueError on truly empty/null input.
+    """
+    if not text or not isinstance(text, str):
+        raise ValueError(f"LLM returned empty/non-string content: {text!r}")
     text = text.strip()
     fence = re.search(r"```(?:json)?\s*\n?([\s\S]*?)```", text)
     if fence:
@@ -34,9 +38,14 @@ def _extract_json(text: str) -> dict:
     for start in range(len(text)):
         if text[start] in "{[":
             try:
-                return json.loads(text[start:])
+                parsed = json.loads(text[start:])
             except json.JSONDecodeError:
                 continue
+            if isinstance(parsed, dict):
+                return parsed
+            if isinstance(parsed, list):
+                return {"items": parsed}
+            raise ValueError(f"LLM returned non-object JSON: {type(parsed).__name__}")
     raise ValueError(f"No valid JSON found in LLM response: {text[:200]}...")
 
 

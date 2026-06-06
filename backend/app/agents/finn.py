@@ -203,11 +203,18 @@ what data was used as a proxy and where confidence is lower.
 """
 
 
-async def run_finn(idea_profile: dict, conversation: list[dict]) -> dict:
+async def run_finn(idea_profile, conversation) -> dict:
     """Run all Finn research modules and return combined dashboard data."""
+    # Defensive: pipeline cleans these but belt-and-braces.
+    if not isinstance(idea_profile, dict):
+        idea_profile = {}
+    if not isinstance(conversation, list):
+        conversation = []
+    safe_turns = [t for t in conversation if isinstance(t, dict) and "speaker" in t and "text" in t]
+
     transcript = "\n".join(
-        f"{'Flora' if t['speaker'] == 'flora' else 'Founder'}: {t['text']}"
-        for t in conversation
+        f"{'Flora' if t.get('speaker') == 'flora' else 'Founder'}: {t.get('text', '')}"
+        for t in safe_turns
     )
     context = (
         f"Idea Profile:\n"

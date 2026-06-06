@@ -152,13 +152,16 @@ Guidelines:
 """
 
 
-async def run_flora(conversation: list[dict]) -> dict:
+async def run_flora(conversation) -> dict:
     """Analyse an intake conversation and return the idea profile."""
+    if not isinstance(conversation, list):
+        conversation = []
+    safe_turns = [t for t in conversation if isinstance(t, dict) and "speaker" in t and "text" in t]
     transcript = "\n".join(
-        f"{'Flora' if t['speaker'] == 'flora' else 'Founder'}: {t['text']}"
-        for t in conversation
+        f"{'Flora' if t.get('speaker') == 'flora' else 'Founder'}: {t.get('text', '')}"
+        for t in safe_turns
     )
     user_msg = f"Here is the intake conversation:\n\n{transcript}"
 
-    logger.info("Flora analysing intake (%d turns)", len(conversation))
+    logger.info("Flora analysing intake (%d turns)", len(safe_turns))
     return await chat_json(ANALYSIS_SYSTEM, user_msg, persona="flora", temperature=0.35)
