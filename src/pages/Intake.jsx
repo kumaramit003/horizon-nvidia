@@ -120,7 +120,7 @@ const FLORA_OPENER = "Hey, I'm Flora — so happy you're here! Tell me, what's t
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export default function Intake({ onComplete }) {
+export default function Intake({ onComplete, onOpenWorkspace }) {
   const [started, setStarted] = useState(false)
   const [conversation, setConversation] = useState([])
   const [floraMessage, setFloraMessage] = useState('')
@@ -475,7 +475,7 @@ export default function Intake({ onComplete }) {
 
       <main className="relative z-10 mx-auto flex min-h-[calc(100vh-90px)] max-w-[760px] flex-col items-center justify-center px-6 pb-16 pt-6">
         {!started ? (
-          <StartVoice onStart={() => setStarted(true)} />
+          <StartVoice onStart={() => setStarted(true)} onOpenWorkspace={onOpenWorkspace} />
         ) : pipelineDone ? (
           <Ready />
         ) : analysing ? (
@@ -624,7 +624,35 @@ export default function Intake({ onComplete }) {
 
 // ─── States ────────────────────────────────────────────────────────────────
 
-function StartVoice({ onStart }) {
+function StartVoice({ onStart, onOpenWorkspace }) {
+  const [workspaces, setWorkspaces] = useState([])
+  const [loadingList, setLoadingList] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    api.listDiscoveries()
+      .then(list => { if (!cancelled) setWorkspaces(Array.isArray(list) ? list : []) })
+      .catch(() => { if (!cancelled) setWorkspaces([]) })
+      .finally(() => { if (!cancelled) setLoadingList(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  const fmtTime = (iso) => {
+    if (!iso) return ''
+    const ms = Date.now() - new Date(iso).getTime()
+    const m = Math.round(ms / 60000)
+    if (m < 1) return 'just now'
+    if (m < 60) return `${m}m ago`
+    const h = Math.round(m / 60)
+    if (h < 24) return `${h}h ago`
+    return `${Math.round(h / 24)}d ago`
+  }
+
+  const statusLabel = (s) =>
+    s === 'dashboard_ready' ? 'Ready' :
+    s === 'processing' ? 'Working…' :
+    s === 'error' ? 'Errored' : s
+
   return (
     <div className="relative mx-auto flex w-full max-w-[620px] flex-col items-center text-center">
       <span className="pointer-events-none absolute -top-20 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
@@ -649,8 +677,50 @@ function StartVoice({ onStart }) {
         className="relative mt-9 inline-flex items-center gap-2 rounded-full bg-forest-500 px-7 py-3.5 text-[14.5px] font-medium text-cream-50 shadow-lift transition-all hover:scale-[1.02] hover:bg-forest-600"
       >
         <Mic size={16} />
-        Start voice intake
+        Start a new idea
       </button>
+
+      {/* Existing workspaces */}
+      {(loadingList || workspaces.length > 0) && (
+        <div className="relative mt-10 w-full max-w-[520px]">
+          <div className="section-eyebrow mb-3 flex items-center justify-center gap-2 text-ink-500">
+            <span className="h-px w-8 bg-ink-200" />
+            Or pick up where you left off
+            <span className="h-px w-8 bg-ink-200" />
+          </div>
+
+          {loadingList ? (
+            <div className="flex items-center justify-center gap-2 py-4 text-[12px] text-ink-400">
+              <Loader2 size={12} className="animate-spin" /> Loading…
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {workspaces.slice(0, 6).map(w => (
+                <button
+                  key={w.id}
+                  onClick={() => onOpenWorkspace?.(w.id)}
+                  className="group flex w-full items-center gap-3 rounded-2xl border border-black/[0.06] bg-white px-4 py-3 text-left transition-all hover:shadow-soft hover:border-sage-300"
+                >
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl gradient-orb-flora shadow-soft">
+                    <LeafMark size={14} className="opacity-95" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13.5px] font-medium text-forest-500">
+                      {(w.workspace_name || 'Untitled workspace').slice(0, 80)}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-400">
+                      <span>{statusLabel(w.status)}</span>
+                      <span>·</span>
+                      <span>{fmtTime(w.created_at)}</span>
+                    </div>
+                  </div>
+                  <ArrowRight size={14} className="shrink-0 text-ink-300 group-hover:text-forest-500" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <Tagline block className="relative mt-12" />
     </div>

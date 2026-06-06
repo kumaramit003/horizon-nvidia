@@ -117,3 +117,40 @@ async def update_dashboard(discovery_id: str, updates: dict, user: Annotated[dic
     if result.matched_count == 0:
         raise HTTPException(404, "Discovery not found")
     return {"ok": True}
+
+
+@router.post("/{discovery_id}/rerun")
+async def rerun_discovery(discovery_id: str, user: Annotated[dict, Depends(current_user)]):
+    """Re-run Flora analysis + Finn modules on the existing intake conversation."""
+    db = get_db()
+    oid = _oid(discovery_id)
+    doc = await db.discoveries.find_one({"_id": oid, "user_id": user["_id"]})
+    if not doc:
+        raise HTTPException(404, "Discovery not found")
+
+    conversation = (doc.get("intake") or {}).get("conversation", [])
+    if not conversation:
+        raise HTTPException(400, "This workspace has no intake conversation to re-run")
+
+    await db.discoveries.update_one(
+        {"_id": oid}, {"$set": {"status": "processing", "updated_at": datetime.utcnow()}}
+    )
+
+    try:
+        dashboard = await run_discovery_pipeline(conversation)
+        await db.discoveries.update_one(
+            {"_id": oid},
+            {"$set": {
+                "dashboard": dashboard,
+                "status": "dashboard_ready",
+                "updated_at": datetime.utcnow(),
+            }},
+        )
+    except Exception as e:
+        await db.discoveries.update_one(
+            {"_id": oid},
+            {"$set": {"status": "error", "error": str(e), "updated_at": datetime.utcnow()}},
+        )
+        raise HTTPException(500, f"Rerun failed: {e}")
+
+    return {"ok": True, "id": discovery_id}

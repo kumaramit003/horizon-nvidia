@@ -76,6 +76,10 @@ export const api = {
     })
   },
 
+  rerunDiscovery(id) {
+    return request(`/discoveries/${id}/rerun`, { method: 'POST' })
+  },
+
   floraChat(conversation) {
     return request('/flora/chat', {
       method: 'POST',

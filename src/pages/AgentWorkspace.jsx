@@ -36,7 +36,21 @@ const statusPill = {
   queued:  'bg-cream-50 border-ink-100 text-ink-500',
 }
 
-export default function AgentWorkspace({ dashboard: _dashboard }) {
+export default function AgentWorkspace({ dashboard: _dashboard, onRerun }) {
+  const [rerunning, setRerunning] = useState(false)
+  const [rerunError, setRerunError] = useState('')
+  const handleRerun = async () => {
+    if (!onRerun || rerunning) return
+    setRerunError('')
+    setRerunning(true)
+    try {
+      await onRerun()
+    } catch (e) {
+      setRerunError(e?.message || 'Re-run failed')
+    } finally {
+      setRerunning(false)
+    }
+  }
   const [filter, setFilter] = useState('All')
   const filters = ['All', 'Locations', 'Audience', 'Market validation', 'Money & grants']
   const visible = filter === 'All' ? LONDON_DATASETS : LONDON_DATASETS.filter(d => d.used_in.includes(filter))
@@ -135,7 +149,15 @@ export default function AgentWorkspace({ dashboard: _dashboard }) {
             </ul>
             <div className="relative mt-3 text-[11.5px] text-ink-500">+ 2 more modules: Risk · Launch Plan</div>
             <div className="relative mt-3 flex items-center gap-2">
-              <button className="btn-ghost text-[12px]"><RefreshCw size={12} /> Re-run analysis</button>
+              <button
+                onClick={handleRerun}
+                disabled={rerunning}
+                className="btn-ghost text-[12px] disabled:opacity-60"
+                title={rerunError || ''}
+              >
+                <RefreshCw size={12} className={rerunning ? 'animate-spin' : ''} />
+                {rerunning ? 'Re-running Finn…' : 'Re-run analysis'}
+              </button>
               <span className="text-[11.5px] text-ink-500">6 modules · {LONDON_DATASETS.length} datasets</span>
             </div>
           </div>

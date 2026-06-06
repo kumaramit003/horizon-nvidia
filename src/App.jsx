@@ -107,8 +107,38 @@ function AuthedApp({ user, onSignOut }) {
     )
   }
 
+  const loadExistingWorkspace = async (id) => {
+    setLoading(true)
+    try {
+      const data = await api.getDashboard(id)
+      setDiscoveryId(id)
+      sessionStorage.setItem('discoveryId', id)
+      setDashboard(data)
+      setStage('dashboard')
+    } catch (e) {
+      console.warn('Failed to open workspace', e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const rerunCurrent = async () => {
+    if (!discoveryId) return
+    setLoading(true)
+    try {
+      await api.rerunDiscovery(discoveryId)
+      const data = await api.getDashboard(discoveryId)
+      setDashboard(data)
+    } catch (e) {
+      console.warn('Re-run failed', e)
+      throw e
+    } finally {
+      setLoading(false)
+    }
+  }
+
   if (stage === 'intake') {
-    return <Intake onComplete={handleIntakeComplete} />
+    return <Intake onComplete={handleIntakeComplete} onOpenWorkspace={loadExistingWorkspace} />
   }
 
   const PageComponent = pages[page]
@@ -144,7 +174,7 @@ function AuthedApp({ user, onSignOut }) {
       <main className="flex min-w-0 flex-1 flex-col">
         <TopBar page={page} recentVoice={recentVoice} user={user} onSignOut={onSignOut} />
         <div className="flex-1 overflow-y-auto px-9 py-8">
-          <PageComponent dashboard={dashboard} discoveryId={discoveryId} />
+          <PageComponent dashboard={dashboard} discoveryId={discoveryId} onRerun={rerunCurrent} />
           <div className="h-24" />
         </div>
       </main>
