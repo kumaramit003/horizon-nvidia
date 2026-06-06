@@ -9,7 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException
+import httpx
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -83,3 +84,43 @@ async def tts(body: TTSRequest):
     except ElevenLabsTTSError as e:
         logger.error("ElevenLabs TTS error: %s", e)
         raise HTTPException(502, str(e))
+
+
+ELEVENLABS_STT_URL = "https://api.elevenlabs.io/v1/speech-to-text"
+
+
+@router.post("/stt")
+async def stt(file: UploadFile = File(...)):
+    """Transcribe an uploaded audio blob via ElevenLabs Scribe.
+
+    Browser sends webm/opus or wav recorded with MediaRecorder. We forward
+    as multipart to ElevenLabs and return the transcribed text.
+    """
+    if not settings.elevenlabs_api_key:
+        raise HTTPException(503, "ElevenLabs is not configured. Set ELEVENLABS_API_KEY.")
+
+    audio = await file.read()
+    if not audio:
+        raise HTTPException(400, "Empty audio file")
+
+    content_type = file.content_type or "audio/webm"
+    filename = file.filename or "audio.webm"
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                ELEVENLABS_STT_URL,
+                headers={"xi-api-key": settings.elevenlabs_api_key},
+                files={"file": (filename, audio, content_type)},
+                data={"model_id": "scribe_v1"},
+            )
+    except httpx.HTTPError as e:
+        logger.exception("ElevenLabs STT request failed")
+        raise HTTPException(502, f"STT request failed: {e}")
+
+    if resp.status_code != 200:
+        logger.error("ElevenLabs STT %s: %s", resp.status_code, resp.text)
+        raise HTTPException(502, f"STT failed ({resp.status_code}): {resp.text}")
+
+    payload = resp.json()
+    return {"text": (payload.get("text") or "").strip(), "raw": payload}

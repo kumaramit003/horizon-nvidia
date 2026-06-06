@@ -262,7 +262,7 @@ same `.env` via pydantic-settings.
 ```bash
 cp .env.example .env   # fill in NVIDIA_API_KEY, ELEVENLABS_* keys
 docker compose up --build
-# Frontend  → http://localhost:3000
+# Frontend  → http://localhost:3001
 # Backend   → http://localhost:8000
 # MongoDB   → mongodb://localhost:27017
 ```

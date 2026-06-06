@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
   Mic, MicOff, Pause, Sparkles, ArrowRight, CornerDownLeft, Send,
-  Database, ExternalLink, Leaf,
+  Database, ExternalLink, Leaf, StopCircle, Loader2,
 } from 'lucide-react'
 import { Wordmark, LeafMark, Tagline } from '../components/Brand'
 import { api } from '../lib/api'
 import { speakWithElevenLabs } from '../lib/voiceApi'
+import { createRecorder, transcribe, isRecordingSupported } from '../lib/recorder'
 
 // ─── Visuals ────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,24 @@ function GatheredPips({ gathered }) {
   )
 }
 
+// Short verbal stalls Flora speaks while the LLM is generating her real reply.
+// Kept very short so they don't outlast the real response.
+const STALLS = [
+  "Mmm…",
+  "Hmm, okay.",
+  "Right, give me a sec.",
+  "Oh, okay okay.",
+  "Mmhm, let me think.",
+  "Got it, hold on.",
+  "Wait, let me sit with that.",
+  "Okay, interesting.",
+  "Mmm, right.",
+]
+
+function pickStall() {
+  return STALLS[Math.floor(Math.random() * STALLS.length)]
+}
+
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function Intake({ onComplete }) {
@@ -81,9 +100,51 @@ export default function Intake({ onComplete }) {
   const [pipelineDone, setPipelineDone] = useState(false)
   const [error, setError] = useState(null)
   const [voiceError, setVoiceError] = useState('')
+  const [micState, setMicState] = useState('idle') // idle | recording | transcribing
+  const [micError, setMicError] = useState('')
+  const [floraStall, setFloraStall] = useState('') // verbal filler while thinking
   const inputRef = useRef(null)
   const chatEndRef = useRef(null)
   const spokenMessageRef = useRef(null)
+  const recorderRef = useRef(null)
+  const stallControllerRef = useRef(null)
+  const stallAudioRef = useRef(null)
+  const micSupported = isRecordingSupported()
+
+  // ── Stall audio: short verbal filler while Flora is thinking ──
+  const stopStall = () => {
+    if (stallControllerRef.current) {
+      stallControllerRef.current.abort()
+      stallControllerRef.current = null
+    }
+    if (stallAudioRef.current) {
+      stallAudioRef.current.pause()
+      stallAudioRef.current = null
+    }
+  }
+
+  const playStall = async () => {
+    stopStall()
+    const text = pickStall()
+    setFloraStall(text)
+    const controller = new AbortController()
+    stallControllerRef.current = controller
+    try {
+      const blob = await speakWithElevenLabs({ text, persona: 'flora', signal: controller.signal })
+      if (controller.signal.aborted) return
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      stallAudioRef.current = audio
+      audio.onended = () => {
+        URL.revokeObjectURL(url)
+        if (stallAudioRef.current === audio) stallAudioRef.current = null
+      }
+      audio.play().catch(() => {})
+    } catch (err) {
+      // best-effort — silent stalls don't break the flow
+      if (err?.name !== 'AbortError') console.warn('Stall TTS failed', err)
+    }
+  }
 
   // ── Flora's opening turn ──
   useEffect(() => {
@@ -127,6 +188,10 @@ export default function Intake({ onComplete }) {
     if (spokenMessageRef.current === floraMessage) return
     spokenMessageRef.current = floraMessage
 
+    // Real reply is ready — kill any stall audio still in flight
+    stopStall()
+    setFloraStall('')
+
     const controller = new AbortController()
     let audio
     let audioUrl
@@ -154,11 +219,9 @@ export default function Intake({ onComplete }) {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [conversation])
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!userInput.trim() || floraTyping || floraThinking) return
-
-    const answer = userInput.trim()
+  const submitAnswer = async (answerText) => {
+    const answer = answerText.trim()
+    if (!answer || floraTyping || floraThinking) return
     setUserInput('')
 
     const updated = [
@@ -169,6 +232,8 @@ export default function Intake({ onComplete }) {
     setConversation(updated)
 
     setFloraThinking(true)
+    playStall() // fire-and-forget verbal filler while we wait
+
     try {
       const res = await api.floraChat(updated)
       setGathered(res.gathered || {})
@@ -192,6 +257,49 @@ export default function Intake({ onComplete }) {
     } catch (err) {
       setError(err.message)
     }
+  }
+
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    return submitAnswer(userInput)
+  }
+
+  // ── Microphone: tap to talk ──
+  const startRecording = async () => {
+    if (floraTyping || floraThinking || micState !== 'idle') return
+    setMicError('')
+    try {
+      const rec = await createRecorder()
+      recorderRef.current = rec
+      setMicState('recording')
+    } catch (err) {
+      setMicError(err.message || 'Microphone unavailable')
+    }
+  }
+
+  const stopRecording = async () => {
+    const rec = recorderRef.current
+    if (!rec) return
+    recorderRef.current = null
+    setMicState('transcribing')
+    try {
+      const blob = await rec.stop()
+      const text = await transcribe(blob)
+      setMicState('idle')
+      if (text) {
+        // Show what was heard, then submit it as the answer
+        setUserInput(text)
+        await submitAnswer(text)
+      }
+    } catch (err) {
+      setMicState('idle')
+      setMicError(err.message || 'Transcription failed')
+    }
+  }
+
+  const toggleMic = () => {
+    if (micState === 'recording') stopRecording()
+    else if (micState === 'idle') startRecording()
   }
 
   // ── Error state ──
@@ -289,39 +397,94 @@ export default function Intake({ onComplete }) {
             )}
 
             {floraThinking && (
-              <div className="mt-6 flex items-center gap-2 text-[13px] text-ink-400">
+              <div className="mt-5 flex flex-col items-center gap-2.5 animate-[fadeIn_0.3s_ease]">
+                {floraStall && (
+                  <div className="text-center">
+                    <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-sage-500 mb-1.5">Flora</div>
+                    <p className="display italic text-[19px] leading-snug text-forest-500/70">
+                      {floraStall}
+                    </p>
+                  </div>
+                )}
                 <span className="inline-flex gap-1">
-                  <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" />
-                  <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '150ms' }} />
-                  <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '300ms' }} />
+                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '150ms' }} />
+                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '300ms' }} />
                 </span>
               </div>
             )}
 
             {!floraTyping && !floraThinking && (
-              <form onSubmit={handleSubmit} className="mt-6 w-full max-w-[560px] animate-[fadeIn_0.4s_ease]">
-                <div className="flex items-center gap-3 rounded-2xl border border-sage-200 bg-white px-5 py-3 shadow-soft focus-within:border-sage-400 focus-within:ring-2 focus-within:ring-sage-200 transition-all">
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={userInput}
-                    onChange={(e) => setUserInput(e.target.value)}
-                    placeholder="Type your answer…"
-                    className="flex-1 bg-transparent text-[15px] text-forest-500 placeholder:text-ink-300 outline-none"
-                    autoFocus
-                  />
+              <div className="mt-6 w-full max-w-[560px] animate-[fadeIn_0.4s_ease] flex flex-col items-center">
+                {/* Primary action: voice */}
+                {micSupported && (
                   <button
-                    type="submit"
-                    disabled={!userInput.trim()}
-                    className="grid h-9 w-9 place-items-center rounded-xl bg-forest-500 text-white transition-all hover:bg-forest-600 disabled:opacity-30"
+                    type="button"
+                    onClick={toggleMic}
+                    disabled={micState === 'transcribing'}
+                    className={`group relative grid h-20 w-20 place-items-center rounded-full shadow-lift transition-all
+                      ${micState === 'recording'
+                        ? 'bg-rose-500 hover:bg-rose-600 scale-105'
+                        : micState === 'transcribing'
+                        ? 'bg-sage-400 cursor-wait'
+                        : 'bg-forest-500 hover:bg-forest-600 hover:scale-105'}`}
                   >
-                    <Send size={14} />
+                    {micState === 'recording' && (
+                      <>
+                        <span className="absolute inset-0 rounded-full bg-rose-500 opacity-40 animate-ringOut" />
+                        <span className="absolute inset-0 rounded-full bg-rose-500 opacity-30 animate-ringOut" style={{ animationDelay: '600ms' }} />
+                      </>
+                    )}
+                    {micState === 'transcribing'
+                      ? <Loader2 size={28} className="text-white animate-spin" />
+                      : micState === 'recording'
+                        ? <StopCircle size={32} className="text-white" />
+                        : <Mic size={28} className="text-white" />}
                   </button>
+                )}
+
+                <div className="mt-3 text-center text-[12.5px] font-medium text-ink-600">
+                  {micState === 'recording'
+                    ? 'Listening… tap to send'
+                    : micState === 'transcribing'
+                      ? 'Transcribing…'
+                      : micSupported
+                        ? 'Tap the mic to talk to Flora'
+                        : 'Voice not supported in this browser — type below'}
                 </div>
-                <div className="mt-2 text-center text-[11px] text-ink-400">
-                  Press Enter to send
-                </div>
-              </form>
+
+                {micError && (
+                  <div className="mt-3 rounded-full border border-butter-200 bg-butter-100 px-4 py-1.5 text-[11.5px] text-ink-700">
+                    {micError}
+                  </div>
+                )}
+
+                {/* Secondary action: text (kept for testing / fallback) */}
+                <details className="mt-6 w-full text-[12px] text-ink-400">
+                  <summary className="cursor-pointer text-center hover:text-ink-600 select-none">
+                    Or type instead
+                  </summary>
+                  <form onSubmit={handleSubmit} className="mt-3">
+                    <div className="flex items-center gap-3 rounded-2xl border border-sage-200 bg-white px-5 py-3 shadow-soft focus-within:border-sage-400 focus-within:ring-2 focus-within:ring-sage-200 transition-all">
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        value={userInput}
+                        onChange={(e) => setUserInput(e.target.value)}
+                        placeholder="Type your answer…"
+                        className="flex-1 bg-transparent text-[15px] text-forest-500 placeholder:text-ink-300 outline-none"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!userInput.trim() || micState !== 'idle'}
+                        className="grid h-9 w-9 place-items-center rounded-xl bg-forest-500 text-white transition-all hover:bg-forest-600 disabled:opacity-30"
+                      >
+                        <Send size={14} />
+                      </button>
+                    </div>
+                  </form>
+                </details>
+              </div>
             )}
 
             <Tagline className="mt-10 opacity-80" block />

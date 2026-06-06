@@ -37,9 +37,11 @@ async def create_discovery(body: DiscoveryCreate, user: Annotated[dict, Depends(
     result = await db.discoveries.insert_one(doc)
     discovery_id = result.inserted_id
 
-    # Run the real LLM pipeline (Flora → Finn)
+    # Run the real LLM pipeline (Flora → Finn). Pydantic models → plain dicts
+    # so the downstream agents can dict-index t['speaker']/t['text'].
+    conversation = [t.model_dump() for t in body.intake.conversation]
     try:
-        dashboard = await run_discovery_pipeline(body.intake.conversation)
+        dashboard = await run_discovery_pipeline(conversation)
         await db.discoveries.update_one(
             {"_id": discovery_id},
             {"$set": {

@@ -4,12 +4,12 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     mongodb_url: str = "mongodb://localhost:27017"
     database_name: str = "founderos"
-    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3001"]
 
     # Nemotron via NVIDIA NIM (or any OpenAI-compatible LLM endpoint).
     nvidia_api_key: str = "not-needed"
     nvidia_base_url: str = "http://localhost:8080/v1"
-    nvidia_model: str = "nvidia/llama-3.1-nemotron-70b-instruct"
+    nvidia_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 
     # ElevenLabs voice synthesis (TTS). Optional — if any of these are
     # blank the /api/voice/tts endpoint returns 503 and the frontend
