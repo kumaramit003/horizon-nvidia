@@ -42,13 +42,19 @@ async def create_discovery(body: DiscoveryCreate, user: Annotated[dict, Depends(
     conversation = [t.model_dump() for t in body.intake.conversation]
     try:
         dashboard = await run_discovery_pipeline(conversation)
+        # Promote the LLM-generated idea title to the workspace name so the
+        # sidebar/switcher don't show the founder's raw transcript.
+        title = ((dashboard.get("idea") or {}).get("title") or "").strip()
+        update = {
+            "dashboard": dashboard,
+            "status": "dashboard_ready",
+            "updated_at": datetime.utcnow(),
+        }
+        if title:
+            update["workspace_name"] = title[:80]
         await db.discoveries.update_one(
             {"_id": discovery_id},
-            {"$set": {
-                "dashboard": dashboard,
-                "status": "dashboard_ready",
-                "updated_at": datetime.utcnow(),
-            }},
+            {"$set": update},
         )
     except Exception as e:
         await db.discoveries.update_one(
@@ -138,14 +144,15 @@ async def rerun_discovery(discovery_id: str, user: Annotated[dict, Depends(curre
 
     try:
         dashboard = await run_discovery_pipeline(conversation)
-        await db.discoveries.update_one(
-            {"_id": oid},
-            {"$set": {
-                "dashboard": dashboard,
-                "status": "dashboard_ready",
-                "updated_at": datetime.utcnow(),
-            }},
-        )
+        title = ((dashboard.get("idea") or {}).get("title") or "").strip()
+        update = {
+            "dashboard": dashboard,
+            "status": "dashboard_ready",
+            "updated_at": datetime.utcnow(),
+        }
+        if title:
+            update["workspace_name"] = title[:80]
+        await db.discoveries.update_one({"_id": oid}, {"$set": update})
     except Exception as e:
         await db.discoveries.update_one(
             {"_id": oid},

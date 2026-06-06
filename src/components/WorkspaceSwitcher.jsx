@@ -10,8 +10,9 @@ const statusLabel = {
   intake_complete: 'Discovery done',
 }
 
-function shortName(w) {
-  return (w?.workspace_name || 'Untitled workspace').slice(0, 60).replace(/\s+/g, ' ').trim()
+function shortName(w, max = 80) {
+  const raw = (w?.workspace_name || 'Untitled workspace').replace(/\s+/g, ' ').trim()
+  return raw.length > max ? raw.slice(0, max).trim() + '…' : raw
 }
 
 function timeAgo(iso) {
@@ -63,7 +64,8 @@ export default function WorkspaceSwitcher({
   useEffect(() => { refresh() }, [currentId]) // refresh when active workspace changes
 
   const current = workspaces.find(w => w.id === currentId)
-  const title = current ? shortName(current) : (currentId ? 'Loading…' : 'No workspace')
+  // Title in the small sidebar card is space-constrained — keep it tight.
+  const title = current ? shortName(current, 34) : (currentId ? 'Loading…' : 'No workspace')
 
   return (
     <div ref={ref} className="relative">
