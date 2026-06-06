@@ -27,7 +27,7 @@ go:
     @echo ""
     @echo "→ Backend is ready."
     @echo ""
-    @echo "  Frontend  →  http://localhost:3000"
+    @echo "  Frontend  →  http://localhost:3001"
     @echo "  Backend   →  http://localhost:8001"
     @echo "  Mongo     →  mongodb://localhost:27017"
     @echo ""
@@ -105,7 +105,7 @@ build:
 
 # ── Quick health checks ────────────────────────────────────────────────────
 
-# Check whether ports 3000 / 8001 / 27017 are free.
+# Check whether ports 3001 / 8001 / 27017 are free.
 doctor:
     @./scripts/check-ports.sh
 

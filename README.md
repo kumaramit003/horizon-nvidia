@@ -100,7 +100,7 @@ export NVIDIA_BASE_URL=http://host.docker.internal:8080/v1
 just up
 ```
 
-Then open http://localhost:3000
+Then open http://localhost:3001
 
 ### All Commands
 

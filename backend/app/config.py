@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     mongodb_url: str = "mongodb://mongo:27017"
     database_name: str = "founderos"
-    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    cors_origins: list[str] = ["http://localhost:5173", "http://localhost:3001"]
 
     # Nemotron via NVIDIA NIM (or any OpenAI-compatible LLM endpoint).
     nvidia_api_key: str = "not-needed"

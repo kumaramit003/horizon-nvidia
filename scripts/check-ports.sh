@@ -1,12 +1,28 @@
 #!/usr/bin/env bash
 # Pre-flight check before `docker compose up`.
-# Returns non-zero if any of the host ports we need is already taken.
+# Returns non-zero if any of the host ports we need is taken by something
+# OUTSIDE our own compose stack. Containers we own are fine.
 
 set -u
 
-ports=(3000 8001 27017)
+ports=(3001 8001 27017)
 labels=(frontend backend mongo)
 fail=0
+
+# If our compose stack already has containers running, the host ports are
+# (correctly) bound by them. Don't flag those as conflicts.
+own_containers=$(docker compose ps -q 2>/dev/null)
+
+if [ -n "$own_containers" ]; then
+  echo "  ℹ Stack is already running — these ports are owned by our containers:"
+  for i in "${!ports[@]}"; do
+    echo "    ✓ Port ${ports[$i]} (${labels[$i]})"
+  done
+  echo ""
+  echo "  Open http://localhost:3001 to view the app."
+  echo "  Run \`just down\` to stop, or \`just rebuild\` to refresh."
+  exit 0
+fi
 
 for i in "${!ports[@]}"; do
   port="${ports[$i]}"
