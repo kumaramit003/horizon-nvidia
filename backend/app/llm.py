@@ -49,31 +49,66 @@ def _extract_json(text) -> dict:
     raise ValueError(f"No valid JSON found in LLM response: {text[:200]}...")
 
 
+def _content_from(choice) -> tuple[str | None, str | None]:
+    """Pull text + finish_reason from a completion choice.
+
+    Reasoning models (e.g. Nemotron *-reasoning) sometimes leave
+    message.content empty and place text in a reasoning field, or run out of
+    budget mid-think (finish_reason='length') and return nothing at all.
+    """
+    msg = choice.message
+    raw = msg.content
+    if not raw:
+        raw = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
+    finish = getattr(choice, "finish_reason", None)
+    return raw, finish
+
+
 async def chat_json(
     system: str,
     user: str,
     *,
     persona: str = "flora",
     temperature: float = 0.4,
-    max_tokens: int = 1500,
+    max_tokens: int = 3000,
 ) -> dict:
-    """Send a chat completion to the given persona's model and parse JSON."""
+    """Send a chat completion to the given persona's model and parse JSON.
+
+    Retries once with a larger token budget if the model truncates before it
+    emits any parseable content (common with reasoning models).
+    """
     client = get_client(persona)
     model = settings.llm_config_for(persona)["model"]
-    try:
-        response = await client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
-    except Exception as e:
-        logger.error("LLM[%s] call failed: %s", persona, e)
-        raise RuntimeError(f"LLM[{persona}] call failed: {e}") from e
 
-    raw = response.choices[0].message.content
-    logger.debug("LLM[%s] raw response: %s", persona, raw[:500])
+    async def _once(tokens: int):
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                temperature=temperature,
+                max_tokens=tokens,
+            )
+        except Exception as e:
+            logger.error("LLM[%s] call failed: %s", persona, e)
+            raise RuntimeError(f"LLM[{persona}] call failed: {e}") from e
+        return _content_from(response.choices[0])
+
+    raw, finish = await _once(max_tokens)
+
+    # If the model returned nothing (or got cut off), give it more room once.
+    if not raw and finish == "length":
+        logger.warning("LLM[%s] empty content (finish_reason=length) — retrying with 2x tokens", persona)
+        raw, finish = await _once(max_tokens * 2)
+
+    if not raw:
+        logger.error("LLM[%s] returned no usable content (finish_reason=%s, model=%s)", persona, finish, model)
+        raise RuntimeError(
+            f"LLM[{persona}] returned no content (finish_reason={finish}). "
+            "If this is a reasoning model, increase max_tokens."
+        )
+
+    logger.debug("LLM[%s] raw response (%d chars, finish=%s): %s", persona, len(raw), finish, raw[:500])
     return _extract_json(raw)

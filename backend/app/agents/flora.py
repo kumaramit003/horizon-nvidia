@@ -164,4 +164,4 @@ async def run_flora(conversation) -> dict:
     user_msg = f"Here is the intake conversation:\n\n{transcript}"
 
     logger.info("Flora analysing intake (%d turns)", len(safe_turns))
-    return await chat_json(ANALYSIS_SYSTEM, user_msg, persona="flora", temperature=0.35)
+    return await chat_json(ANALYSIS_SYSTEM, user_msg, persona="flora", temperature=0.35, max_tokens=4000)
