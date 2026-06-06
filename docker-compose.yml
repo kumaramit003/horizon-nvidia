@@ -41,6 +41,12 @@ services:
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-not-needed}
       - NVIDIA_BASE_URL=${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
       - NVIDIA_MODEL=${NVIDIA_MODEL:-nvidia/nemotron-3-nano-omni-30b-a3b-reasoning}
+      # Dedicated Finn endpoint (optional). When set, Finn uses this
+      # OpenAI-compatible server while Flora stays on the NIM above. Use
+      # host.docker.internal to reach a server bound to 127.0.0.1 on the host.
+      - FINN_BASE_URL=${FINN_BASE_URL:-}
+      - FINN_API_KEY=${FINN_API_KEY:-}
+      - FINN_MODEL=${FINN_MODEL:-}
       # ElevenLabs TTS (Flora + Finn voices). Leave blank to skip voice playback.
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
       - ELEVENLABS_VOICE_ID_FLORA=${ELEVENLABS_VOICE_ID_FLORA:-}

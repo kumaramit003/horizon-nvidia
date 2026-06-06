@@ -23,8 +23,25 @@ class Settings(BaseSettings):
     nvidia_base_url: str = "http://localhost:8080/v1"
     nvidia_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
 
+    # Dedicated Finn endpoint override. When FINN_BASE_URL is set, Finn uses
+    # this OpenAI-compatible endpoint exclusively (e.g. a separate model on a
+    # different server), while Flora stays on the NIM/Nebius config above.
+    # From inside the backend container, use host.docker.internal to reach a
+    # server bound to 127.0.0.1 on the docker host.
+    finn_base_url: str = ""
+    finn_api_key: str = ""
+    finn_model: str = ""
+
     def llm_config_for(self, persona: str) -> dict:
         """Return {api_key, base_url, model} for a given persona (flora|finn)."""
+        # Dedicated Finn endpoint takes top priority when configured.
+        if persona == "finn" and self.finn_base_url:
+            return {
+                "api_key": self.finn_api_key or "not-needed",
+                "base_url": self.finn_base_url,
+                "model": self.finn_model or self.nvidia_model,
+            }
+
         if persona == "flora":
             key = self.nebius_api_key_flora or self.nebius_api_key
             model = self.nebius_model_flora or self.nebius_model
