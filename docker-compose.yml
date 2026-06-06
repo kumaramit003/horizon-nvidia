@@ -58,6 +58,17 @@ services:
       mongo:
         condition: service_healthy
 
+  # Relay so the backend container can reach an openclaw/LLM gateway that is
+  # bound to 127.0.0.1 on the host. Containers can't reach host loopback, so
+  # socat (running in the host network namespace) listens on 0.0.0.0:18790 and
+  # forwards to 127.0.0.1:18789. Point FINN_BASE_URL at host.docker.internal:18790.
+  # Only needed when the Finn gateway is loopback-bound on the host.
+  finn-proxy:
+    image: alpine/socat
+    restart: unless-stopped
+    network_mode: host
+    command: TCP-LISTEN:18790,fork,reuseaddr TCP:127.0.0.1:18789
+
   frontend:
     build:
       context: .
