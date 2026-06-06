@@ -11,13 +11,13 @@ export function Card({ className = '', children, padded = true, ...rest }) {
 
 export function SectionHeader({ eyebrow, title, description, right }) {
   return (
-    <div className="mb-5 flex items-start justify-between gap-4">
-      <div>
+    <div className="mb-5 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+      <div className="min-w-0 flex-1">
         {eyebrow && <div className="section-eyebrow mb-2">{eyebrow}</div>}
-        <h2 className="display text-[24px] font-normal leading-tight text-ink-900">{title}</h2>
-        {description && <p className="mt-1.5 text-[14px] text-ink-500">{description}</p>}
+        <h2 className="display text-[24px] font-normal leading-tight tracking-tight text-forest-500">{title}</h2>
+        {description && <p className="mt-1.5 text-[14px] leading-relaxed text-ink-500">{description}</p>}
       </div>
-      {right}
+      {right && <div className="flex flex-wrap items-center gap-2">{right}</div>}
     </div>
   )
 }

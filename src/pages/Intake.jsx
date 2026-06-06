@@ -125,8 +125,8 @@ export default function Intake({ onComplete }) {
       <span className="pointer-events-none absolute -bottom-32 -right-32 h-[28rem] w-[28rem] rounded-full gradient-soft-lavender opacity-40 blur-3xl animate-floaty" style={{ animationDelay: '2s' }} />
       <span className="pointer-events-none absolute top-1/3 -right-20 h-56 w-56 rounded-full gradient-soft-mint opacity-40 blur-3xl animate-floaty" style={{ animationDelay: '4s' }} />
 
-      <header className="relative z-10 mx-auto flex max-w-[1180px] items-center justify-between px-8 pt-7">
-        <Wordmark />
+      <header className="relative z-10 mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-3 px-8 pt-8">
+        <Wordmark size="lg" />
         <a
           href="https://data.london.gov.uk/dataset/"
           target="_blank"
@@ -197,7 +197,7 @@ export default function Intake({ onComplete }) {
                   <button className="btn-ghost text-[12.5px]"><MicOff size={12} /> Mute</button>
                 </div>
 
-                <Tagline className="mt-10 opacity-80" />
+                <Tagline className="mt-10 opacity-80" block />
               </>
             )}
           </>
@@ -269,25 +269,31 @@ function Analysing() {
 
 function Ready({ onComplete }) {
   return (
-    <div className="relative">
-      <span className="absolute -top-20 left-1/2 -translate-x-1/2 h-44 w-44 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
-      <div className="relative">
-        <div className="mx-auto grid h-16 w-16 place-items-center rounded-2xl gradient-orb-finn shadow-lift">
-          <Leaf size={24} className="text-white" />
+    <div className="relative mx-auto w-full max-w-[600px]">
+      <span aria-hidden className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-56 w-56 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
+      <div className="relative flex flex-col items-center text-center">
+        <div className="grid h-20 w-20 place-items-center rounded-3xl gradient-orb-finn shadow-lift">
+          <Leaf size={30} className="text-white" />
         </div>
-        <h1 className="mt-6 display text-[56px] leading-[1.05] text-forest-500">
+
+        <h1 className="mt-8 display text-[56px] leading-[1.04] tracking-tight text-forest-500">
           Your plan is <span className="italic-accent text-sage-500">ready.</span>
         </h1>
-        <p className="mt-4 max-w-[520px] text-[16px] leading-relaxed text-ink-500 mx-auto">
+
+        <p className="mt-5 max-w-[520px] text-[16px] leading-relaxed text-ink-500">
           Seven sections. Twelve London datasets. One page where you can finally <span className="text-forest-500">see the whole thing.</span>
         </p>
+
         <button
           onClick={onComplete}
-          className="mt-8 inline-flex items-center gap-2 rounded-full bg-forest-500 px-6 py-3.5 text-[14px] font-medium text-cream-50 shadow-lift transition-all hover:scale-[1.02] hover:bg-forest-600"
+          className="mt-10 inline-flex items-center gap-2 rounded-full bg-forest-500 px-7 py-3.5 text-[14.5px] font-medium text-cream-50 shadow-lift transition-all hover:scale-[1.02] hover:bg-forest-600"
         >
-          See my plan <ArrowRight size={15} />
+          See my plan <ArrowRight size={16} />
         </button>
-        <Tagline className="mt-6 block" />
+
+        <div className="mt-3 text-[12px] text-ink-400">You can refine everything with voice from inside.</div>
+
+        <Tagline block className="mt-12" />
       </div>
     </div>
   )

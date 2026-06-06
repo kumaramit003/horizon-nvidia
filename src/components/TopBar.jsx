@@ -1,6 +1,6 @@
 import React from 'react'
 import { Activity, Download, Presentation, Search, ChevronRight, Sparkles, Share2 } from 'lucide-react'
-import { AgentBadge, Tagline } from './Brand'
+import { AgentBadge } from './Brand'
 
 const pageMeta = {
   idea:       { eyebrow: 'The idea',          title: "What you're really building",       agent: 'flora' },
@@ -15,31 +15,19 @@ const pageMeta = {
 export default function TopBar({ page, recentVoice }) {
   const meta = pageMeta[page]
   return (
-    <header className="sticky top-0 z-20 border-b border-black/[0.06] bg-cream-100/85 px-9 py-5 backdrop-blur-xl">
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 text-[12.5px] text-ink-500">
+    <header className="sticky top-0 z-20 border-b border-black/[0.06] bg-cream-100/85 px-9 pt-5 pb-6 backdrop-blur-xl">
+      {/* Row 1: breadcrumb (left) + actions (right) */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2 text-[12.5px] text-ink-500">
           <span>Plan</span>
           <ChevronRight size={13} className="text-ink-300" />
-          <span className="text-forest-500">Halal Healthy Lunch &amp; Catering</span>
+          <span className="truncate text-forest-500">Halal Healthy Lunch &amp; Catering</span>
           <ChevronRight size={13} className="text-ink-300" />
           <span className="text-ink-700">{meta.eyebrow}</span>
         </div>
 
-        {meta.agent === 'both' ? (
-          <div className="ml-1 flex items-center gap-1.5">
-            <AgentBadge who="flora" status="ready" />
-            <AgentBadge who="finn"  status="ready" />
-          </div>
-        ) : (
-          <AgentBadge who={meta.agent} status="auto" />
-        )}
-
-        <span className="ml-1 pill-cream">
-          <Activity size={11} className="text-sage-500" /> Validation in progress · clarity 78%
-        </span>
-
-        <div className="ml-auto flex items-center gap-2">
-          <div className="hidden md:flex items-center gap-2 rounded-full border border-black/[0.06] bg-white px-3.5 py-1.5 text-[12px] text-ink-500">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="hidden xl:flex items-center gap-2 rounded-full border border-black/[0.06] bg-white px-3.5 py-1.5 text-[12px] text-ink-500">
             <Search size={13} />
             <span>Ask Flora or Finn · ⌘K</span>
           </div>
@@ -49,19 +37,34 @@ export default function TopBar({ page, recentVoice }) {
         </div>
       </div>
 
-      <div className="mt-4 flex items-end gap-5">
-        <div>
+      {/* Row 2: page title (left) + status pills + voice update (right) */}
+      <div className="mt-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0 flex-1">
           <div className="section-eyebrow mb-1.5">{meta.eyebrow}</div>
-          <h1 className="display text-[34px] leading-[1.05] text-forest-500">{meta.title}</h1>
+          <h1 className="display text-[34px] leading-[1.05] tracking-tight text-forest-500">
+            {meta.title}
+          </h1>
         </div>
-        {recentVoice ? (
-          <div className="mb-1 ml-auto hidden lg:flex max-w-[460px] items-start gap-2 rounded-full border border-sage-200 bg-sage-50 px-3.5 py-2 text-[12px] text-forest-500">
-            <Sparkles size={12} className="mt-0.5 shrink-0 text-sage-500" />
-            <span className="truncate">Updated via voice: "{recentVoice}"</span>
-          </div>
-        ) : (
-          <Tagline className="mb-1.5 ml-auto hidden lg:inline-flex" />
-        )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          {meta.agent === 'both' ? (
+            <>
+              <AgentBadge who="flora" status="ready" />
+              <AgentBadge who="finn"  status="ready" />
+            </>
+          ) : (
+            <AgentBadge who={meta.agent} status="auto" />
+          )}
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.06] bg-cream-50 px-2.5 py-1 text-[11px] font-medium text-ink-700">
+            <Activity size={11} className="text-sage-500" /> 78% clarity
+          </span>
+          {recentVoice && (
+            <div className="flex max-w-[360px] items-center gap-2 rounded-full border border-sage-200 bg-sage-50 px-3 py-1.5 text-[11.5px] text-forest-500">
+              <Sparkles size={11} className="shrink-0 text-sage-500" />
+              <span className="truncate">Updated: "{recentVoice}"</span>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   )

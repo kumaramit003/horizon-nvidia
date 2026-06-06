@@ -25,7 +25,7 @@ body {
 
 @layer components {
   .card {
-    @apply rounded-3xl border border-black/[0.06] bg-white shadow-soft;
+    @apply relative overflow-hidden rounded-3xl border border-black/[0.06] bg-white shadow-soft;
   }
   .card-warm {
     @apply rounded-3xl border border-black/[0.05] bg-cream-50 shadow-soft;

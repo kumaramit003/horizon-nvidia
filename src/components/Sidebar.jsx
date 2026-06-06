@@ -20,8 +20,8 @@ export default function Sidebar({ active, onChange, onBackToIntake }) {
 
   return (
     <aside className="flex h-screen w-[260px] shrink-0 flex-col border-r border-black/[0.06] bg-cream-50/80 backdrop-blur-xl">
-      <div className="px-5 pt-6 pb-4">
-        <Wordmark />
+      <div className="px-5 pt-6 pb-5">
+        <Wordmark size="md" />
       </div>
 
       <div className="px-3 pb-1">
