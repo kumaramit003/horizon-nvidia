@@ -1,31 +1,6 @@
 import React from 'react'
-import { ShieldAlert, Lightbulb, TrendingUp, Database, ArrowRight, Sparkles } from 'lucide-react'
-import { Card, SectionHeader, Confidence, Tag, AskWhyButton, VoiceCommandBlock, SourceChip } from '../components/ui'
-
-const evidence = [
-  { signal: 'High office density',      impact: 'Positive',     conf: 'Medium', sourceName: 'Workplace Zone Statistics',     sourceSlug: 'workplace-zone-statistics', tone: 'mint',     icon: TrendingUp },
-  { signal: 'High competitor density',  impact: 'Risk',         conf: 'Medium', sourceName: 'Food Business Establishments',  sourceSlug: 'food-business-est',         tone: 'rose',     icon: ShieldAlert },
-  { signal: 'Niche positioning',        impact: 'Opportunity',  conf: 'Medium', sourceName: '2021 Census · Religion by Ward',sourceSlug: 'census-2021-religion',      tone: 'lavender', icon: Lightbulb },
-  { signal: 'Storefront cost exposure', impact: 'Risk',         conf: 'High',   sourceName: 'VOA Floor Space & Property',    sourceSlug: 'voa-floorspace',            tone: 'butter',   icon: Database },
-]
-
-const radarCats = [
-  { label: 'Demand',      value: 0.78 },
-  { label: 'Competition', value: 0.85 },
-  { label: 'Cost',        value: 0.72 },
-  { label: 'Location',    value: 0.50 },
-  { label: 'Licensing',   value: 0.35 },
-  { label: 'Operational', value: 0.55 },
-  { label: 'Funding',     value: 0.65 },
-]
-
-const experiments = [
-  { title: 'Interview 10 office managers',              impact: 'High',   effort: 'Low',    days: '3 days' },
-  { title: 'Create a pre-order landing page',           impact: 'Medium', effort: 'Low',    days: '2 days' },
-  { title: 'Test 3 menu bundles',                       impact: 'Medium', effort: 'Medium', days: '1 week' },
-  { title: 'Run a 2-week corporate lunch pilot',        impact: 'High',   effort: 'High',   days: '2 weeks' },
-  { title: 'Compare Liverpool Street vs Canary Wharf',  impact: 'Medium', effort: 'Low',    days: '3 days' },
-]
+import { Card, SectionHeader, Confidence, Tag, AskWhyButton, VoiceCommandBlock, SourceChip, EmptyPage } from '../components/ui'
+import { DynIcon } from '../lib/icons'
 
 function RiskRadar({ cats }) {
   const size = 300, cx = size / 2, cy = size / 2, R = 110
@@ -80,12 +55,28 @@ const impactPill = (k) =>
   : k === 'Risk' ? 'bg-rose-100 border-rose-200 text-ink-800'
   : 'bg-cream-50 border-ink-100 text-ink-700'
 
+const impactTagKind = (impact) =>
+  impact === 'Positive' || impact === 'Opportunity' ? 'Opportunity'
+  : impact === 'Risk' ? 'Risk'
+  : 'Neutral'
+
 export default function MarketValidation({ dashboard }) {
-  const _evidence = dashboard?.evidence?.length ? dashboard.evidence : evidence
-  const _radar = dashboard?.radar?.length ? dashboard.radar : radarCats
-  const _experiments = dashboard?.experiments?.length ? dashboard.experiments : experiments
-  const _verdict = dashboard?.validation_verdict || "Promising — but you'll have to earn it."
-  const _verdictDesc = dashboard?.validation_description || "Demand signals around office density and corporate catering are real. The risks are competition and high rent exposure — both fixable if you start with B2B pre-orders before signing any lease."
+  const _evidence = dashboard?.evidence?.length ? dashboard.evidence : []
+  const _radar = dashboard?.radar?.length ? dashboard.radar : []
+  const _experiments = dashboard?.experiments?.length ? dashboard.experiments : []
+  const _verdict = dashboard?.validation_verdict || ''
+  const _verdictDesc = dashboard?.validation_description || ''
+
+  const hasAny = _evidence.length || _radar.length || _experiments.length || _verdict
+  if (!hasAny) return <EmptyPage label="market validation" />
+
+  // Derive the headline stats + tag row from the real evidence so nothing is
+  // hardcoded to a specific business idea.
+  const positives = _evidence.filter(e => e.impact === 'Positive' || e.impact === 'Opportunity')
+  const risks = _evidence.filter(e => e.impact === 'Risk')
+  const avgRadar = _radar.length ? _radar.reduce((s, c) => s + c.value, 0) / _radar.length : 0
+  const overallConf = avgRadar >= 0.66 ? 'Low' : avgRadar >= 0.4 ? 'Medium' : 'High'
+
   return (
     <div className="space-y-10">
       {/* Summary headline */}
@@ -95,27 +86,29 @@ export default function MarketValidation({ dashboard }) {
         <div className="relative">
           <Tag kind="Recommended">Verdict</Tag>
           <h2 className="mt-4 display text-[44px] leading-tight text-ink-900">
-            {_verdict.includes('—') ? <>{_verdict.split('—')[0]}— <span className="italic-accent text-peach-500">{_verdict.split('—')[1]}</span></> : _verdict}
+            {_verdict.includes('—') ? <>{_verdict.split('—')[0]}— <span className="italic-accent text-peach-500">{_verdict.split('—').slice(1).join('—')}</span></> : (_verdict || 'Validation summary')}
           </h2>
-          <p className="mt-4 max-w-[72ch] text-[16px] leading-relaxed text-ink-500">
-            {_verdictDesc}
-          </p>
-          <div className="mt-6 flex flex-wrap gap-2">
-            <Tag kind="Opportunity">Office density</Tag>
-            <Tag kind="Opportunity">Niche differentiation</Tag>
-            <Tag kind="Risk">Competitor saturation</Tag>
-            <Tag kind="Risk">High rent exposure</Tag>
-            <Tag kind="Missing Info">Live demand</Tag>
-          </div>
+          {_verdictDesc && (
+            <p className="mt-4 max-w-[72ch] text-[16px] leading-relaxed text-ink-500">
+              {_verdictDesc}
+            </p>
+          )}
+          {_evidence.length > 0 && (
+            <div className="mt-6 flex flex-wrap gap-2">
+              {_evidence.slice(0, 6).map(e => (
+                <Tag key={e.signal} kind={impactTagKind(e.impact)}>{e.signal}</Tag>
+              ))}
+            </div>
+          )}
         </div>
       </Card>
 
-      {/* Stats strip */}
+      {/* Stats strip — derived from the real evidence */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <Kpi label="Signals scanned" value="124" tone="cream-50" />
-        <Kpi label="Strong positives" value="6"  tone="gradient-soft-mint" />
-        <Kpi label="Notable risks"    value="3"  tone="gradient-soft-rose" />
-        <Kpi label="Confidence"       value="Medium" sub tone="gradient-soft-butter" />
+        <Kpi label="Signals analysed" value={String(_evidence.length)} tone="cream-50" />
+        <Kpi label="Strong positives" value={String(positives.length)}  tone="gradient-soft-mint" />
+        <Kpi label="Notable risks"    value={String(risks.length)}  tone="gradient-soft-rose" />
+        <Kpi label="Confidence"       value={overallConf} sub tone="gradient-soft-butter" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_1fr]">
@@ -128,18 +121,21 @@ export default function MarketValidation({ dashboard }) {
           />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {_evidence.map(e => {
-              const Icon = e.icon
+              // Backend uses snake_case (source_name / source_slug); tolerate
+              // both so older docs keep rendering.
+              const sourceName = e.source_name || e.sourceName
+              const sourceSlug = e.source_slug || e.sourceSlug
               return (
                 <div key={e.signal} className={`rounded-2xl border border-black/[0.05] p-5 gradient-soft-${e.tone}`}>
                   <div className="flex items-center gap-2.5">
                     <span className="grid h-9 w-9 place-items-center rounded-xl bg-white/70">
-                      <Icon size={15} className="text-ink-900" />
+                      <DynIcon name={e.icon} size={15} className="text-ink-900" />
                     </span>
                     <span className="display text-[18px] text-ink-900">{e.signal}</span>
                     <span className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${impactPill(e.impact)}`}>{e.impact}</span>
                   </div>
                   <div className="mt-4 flex items-center justify-between gap-2 text-[12px] text-ink-700">
-                    <SourceChip name={e.sourceName} slug={e.sourceSlug} />
+                    <SourceChip name={sourceName} slug={sourceSlug} />
                     <Confidence level={e.conf} />
                   </div>
                 </div>
@@ -150,7 +146,7 @@ export default function MarketValidation({ dashboard }) {
 
         {/* Risk radar */}
         <Card className="!p-7">
-          <SectionHeader eyebrow="Risk shape" title="Seven dimensions" description="Bigger = more concerning." />
+          <SectionHeader eyebrow="Risk shape" title={`${_radar.length} dimension${_radar.length === 1 ? '' : 's'}`} description="Bigger = more concerning." />
           <div className="flex justify-center">
             <RiskRadar cats={_radar} />
           </div>
@@ -165,23 +161,6 @@ export default function MarketValidation({ dashboard }) {
           </div>
         </Card>
       </div>
-
-      {/* Recommendation */}
-      <Card className="relative overflow-hidden !p-7">
-        <div className="absolute -right-12 -top-12 h-44 w-44 rounded-full gradient-soft-peach opacity-50 blur-2xl" />
-        <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex-1">
-            <Tag kind="Recommended" icon={Sparkles}>Recommended first wedge</Tag>
-            <p className="mt-3 display text-[24px] leading-snug text-ink-900 max-w-[60ch]">
-              Start with corporate pre-orders and office catering pilots. Don't sign a lease until <span className="italic-accent text-peach-500">10–20 recurring business customers</span> say yes.
-            </p>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            <AskWhyButton />
-            <button className="btn-coral text-[13px]">Apply to my plan <ArrowRight size={13} /></button>
-          </div>
-        </div>
-      </Card>
 
       {/* Experiments + voice */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.6fr_1fr]">

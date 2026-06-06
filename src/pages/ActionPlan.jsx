@@ -1,44 +1,7 @@
 import React, { useState } from 'react'
-import {
-  Check, Calendar, FileText, Mail, Globe, Presentation,
-  ClipboardList, MapPin, Sparkles, ArrowRight, Building2
-} from 'lucide-react'
-import { Card, SectionHeader, Tag, VoiceCommandBlock, AskWhyButton } from '../components/ui'
-
-const days = [
-  { d: '01', title: 'Finalise offer and pricing',          status: 'done',  owner: 'You' },
-  { d: '02', title: 'Identify 30 target offices',          status: 'doing', owner: 'You + Audience Agent' },
-  { d: '03', title: 'Build pre-order landing page',        status: 'todo',  owner: 'Action Plan Agent' },
-  { d: '04', title: 'Run 10 customer interviews',          status: 'todo',  owner: 'You' },
-  { d: '05', title: 'Test 3 menu bundles',                 status: 'todo',  owner: 'You' },
-  { d: '06', title: 'Contact 3 kitchen / pop-up partners', status: 'todo',  owner: 'You' },
-  { d: '07', title: 'Review demand · decide next step',    status: 'todo',  owner: 'You + Jill' },
-]
-
-const roadmap = [
-  { window: '30 days', goal: 'Validate demand',                       tone: 'peach',    detail: ['10–20 customer interviews', 'Landing page live', '5 letters of intent from offices'] },
-  { window: '60 days', goal: 'Secure first recurring customers',      tone: 'lavender', detail: ['3 paying corporate accounts', '2-week pop-up tested', 'Unit economics confirmed'] },
-  { window: '90 days', goal: 'Pop-up · delivery · or storefront?',    tone: 'mint',     detail: ['Burn-rate aware roadmap', 'Funding application drafted', 'Hiring plan v1'] },
-]
-
-const assets = [
-  { title: 'Customer interview script',      icon: ClipboardList, tone: 'peach' },
-  { title: 'Landing page copy',              icon: Globe,         tone: 'sky' },
-  { title: 'Office manager outreach email',  icon: Mail,          tone: 'lavender' },
-  { title: 'Grant application draft',        icon: FileText,      tone: 'butter' },
-  { title: 'Competitor research table',      icon: Building2,     tone: 'mint' },
-  { title: 'Lean business plan',             icon: FileText,      tone: 'rose' },
-  { title: 'Pitch deck outline',             icon: Presentation,  tone: 'peach' },
-  { title: 'Location shortlist',             icon: MapPin,        tone: 'lavender' },
-]
-
-const tasks = [
-  { t: 'Validate pricing',                   status: 'in_progress', tag: 'Recommended' },
-  { t: 'Find 20 office manager contacts',    status: 'todo',        tag: 'Opportunity' },
-  { t: 'Create sample menu',                 status: 'todo',        tag: 'Neutral' },
-  { t: 'Estimate unit economics',            status: 'in_progress', tag: 'Recommended' },
-  { t: 'Research kitchen rental options',    status: 'todo',        tag: 'Neutral' },
-]
+import { Check, Calendar, Sparkles, ArrowRight } from 'lucide-react'
+import { Card, SectionHeader, Tag, VoiceCommandBlock, AskWhyButton, EmptyPage } from '../components/ui'
+import { DynIcon } from '../lib/icons'
 
 const statusPill = {
   done:  'bg-mint-100 border-mint-200 text-ink-800',
@@ -46,8 +9,18 @@ const statusPill = {
   todo:  'bg-cream-50 border-ink-100 text-ink-500',
 }
 
+const roadmapTones = ['peach', 'lavender', 'mint']
+
 export default function ActionPlan({ dashboard }) {
   const [checked, setChecked] = useState({})
+
+  const days = dashboard?.days?.length ? dashboard.days : []
+  const roadmap = dashboard?.roadmap?.length ? dashboard.roadmap : []
+  const assets = dashboard?.assets?.length ? dashboard.assets : []
+  const tasks = dashboard?.tasks?.length ? dashboard.tasks : []
+
+  const hasAny = days.length || roadmap.length || assets.length || tasks.length
+  if (!hasAny) return <EmptyPage label="action plan" />
 
   return (
     <div className="space-y-10">
@@ -101,9 +74,9 @@ export default function ActionPlan({ dashboard }) {
       <section>
         <SectionHeader eyebrow="30 / 60 / 90" title="What 'good' looks like further out" />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {roadmap.map(r => (
+          {roadmap.map((r, i) => (
             <div key={r.window} className={`card relative overflow-hidden !p-6`}>
-              <div className={`absolute -right-10 -top-10 h-32 w-32 rounded-full gradient-soft-${r.tone} opacity-70 blur-2xl`} />
+              <div className={`absolute -right-10 -top-10 h-32 w-32 rounded-full gradient-soft-${r.tone || roadmapTones[i % 3]} opacity-70 blur-2xl`} />
               <div className="relative">
                 <div className="flex items-center gap-2">
                   <Calendar size={13} className="text-ink-500" />
@@ -133,11 +106,10 @@ export default function ActionPlan({ dashboard }) {
           />
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {assets.map(a => {
-              const Icon = a.icon
               return (
                 <button key={a.title} className={`group relative overflow-hidden rounded-2xl border border-black/[0.05] gradient-soft-${a.tone} p-4 text-left hover:shadow-lift transition-all`}>
                   <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/70">
-                    <Icon size={15} className="text-ink-900" />
+                    <DynIcon name={a.icon} size={15} className="text-ink-900" />
                   </span>
                   <div className="mt-4 text-[13px] font-semibold text-ink-900">{a.title}</div>
                   <div className="mt-3 inline-flex items-center gap-1 text-[11.5px] text-ink-700 group-hover:text-ink-900">

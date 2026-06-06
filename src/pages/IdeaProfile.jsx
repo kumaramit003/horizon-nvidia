@@ -5,39 +5,35 @@ import {
 } from 'lucide-react'
 import { Card, SectionHeader, Confidence, Tag, Progress, MiniActions, VoiceCommandBlock, AskWhyButton } from '../components/ui'
 
-const DEFAULT_CLARITY = [
-  { label: 'Customer clarity',    value: 88, level: 'High'   },
-  { label: 'Problem clarity',     value: 64, level: 'Medium' },
-  { label: 'Revenue model',       value: 82, level: 'High'   },
-  { label: 'Location clarity',    value: 58, level: 'Medium' },
-  { label: 'Competition clarity', value: 32, level: 'Low'    },
-  { label: 'Funding clarity',     value: 38, level: 'Low'    },
-  { label: 'Risk clarity',        value: 60, level: 'Medium' },
-]
-
-const DEFAULT_ASSUMPTIONS = [
-  { text: "You're targeting weekday office demand.",                  tag: 'Opportunity', tone: 'mint' },
-  { text: 'Corporate catering is the safer first move, not a shop.', tag: 'Recommended', tone: 'peach' },
-  { text: 'Liverpool Street works because of office density.',       tag: 'Opportunity', tone: 'sky' },
-  { text: "There's a lot of competition — defensibility matters.",   tag: 'Risk',        tone: 'rose' },
-]
-
-const DEFAULT_QUESTIONS = [
-  'What is your starting budget?',
-  'Pop-ups or delivery first?',
-  'What price per meal are you considering?',
-  'Suppliers or kitchen access already lined up?',
-]
+function EmptyState() {
+  return (
+    <Card className="!p-10 text-center">
+      <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl gradient-soft-peach">
+        <AlertTriangle size={20} className="text-peach-500" />
+      </div>
+      <h2 className="mt-5 display text-[28px] text-forest-500">No idea profile yet</h2>
+      <p className="mt-2 text-[14px] text-ink-500 max-w-[460px] mx-auto">
+        Flora's analysis hasn't been generated for this workspace, or the pipeline didn't finish.
+        Open <strong>Flora &amp; Finn</strong> and click <strong>Re-run analysis</strong> to build it.
+      </p>
+    </Card>
+  )
+}
 
 export default function IdeaProfile({ dashboard }) {
   const idea = dashboard?.idea || {}
-  const clarityRows = idea.clarity_rows?.length ? idea.clarity_rows : DEFAULT_CLARITY
-  const assumptions = idea.assumptions?.length ? idea.assumptions : DEFAULT_ASSUMPTIONS
-  const openQuestions = idea.open_questions?.length ? idea.open_questions : DEFAULT_QUESTIONS
-  const clarityScore = idea.clarity_score || 78
-  const floraNote = idea.flora_note || "It's a real personal pain in a high-density office patch — that's a strong starting point. The risk isn't whether people want lunch. It's whether they'll keep choosing you over the place next door."
-  const title = idea.title || 'Halal Healthy Lunch & Catering'
-  const description = idea.description || 'Flora captured the idea; Finn suggests starting with B2B pre-orders and a pop-up before signing any lease.'
+  const hasIdea = !!(idea.title || idea.subtitle || idea.business_type)
+
+  if (!hasIdea) return <EmptyState />
+
+  const clarityRows = idea.clarity_rows?.length ? idea.clarity_rows : []
+  const assumptions = idea.assumptions?.length ? idea.assumptions : []
+  const openQuestions = idea.open_questions?.length ? idea.open_questions : []
+  const clarityScore = idea.clarity_score ?? 0
+  const floraNote = idea.flora_note || ''
+  const title = idea.title || 'Untitled idea'
+  const description = idea.description || ''
+  const subtitle = idea.subtitle || ''
 
   return (
     <div className="space-y-10">
@@ -58,14 +54,14 @@ export default function IdeaProfile({ dashboard }) {
                 ) : title}
               </h2>
               <p className="mt-3 max-w-[60ch] text-[16px] leading-relaxed text-ink-500">
-                {idea.subtitle || 'A halal, health-focused lunch and corporate catering service for office workers around'} <span className="text-forest-500">Liverpool Street</span>. {description}
+                {subtitle}{description ? ' ' + description : ''}
               </p>
 
               <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-                <Field icon={Briefcase} label="Business type" value={idea.business_type || "Food · B2B Catering"} />
-                <Field icon={Sprout}    label="Stage"         value={idea.stage || "Idea"} />
-                <Field icon={MapPin}    label="Physical site" value={idea.physical_site || "Maybe — pop-up first"} />
-                <Field icon={PoundSterling} label="Revenue"   value={idea.revenue || "Catering · Subs · Pop-ups"} />
+                <Field icon={Briefcase} label="Business type" value={idea.business_type || '—'} />
+                <Field icon={Sprout}    label="Stage"         value={idea.stage || '—'} />
+                <Field icon={MapPin}    label="Physical site" value={idea.physical_site || '—'} />
+                <Field icon={PoundSterling} label="Revenue"   value={idea.revenue || '—'} />
               </div>
             </div>
           </Card>
@@ -92,22 +88,26 @@ export default function IdeaProfile({ dashboard }) {
         </div>
       </section>
 
-      {/* Flora's note */}
-      <Card className="relative overflow-hidden !p-7">
-        <div className="absolute -left-10 top-1/2 -translate-y-1/2 h-48 w-48 rounded-full gradient-soft-peach opacity-50 blur-2xl" />
-        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl gradient-orb-flora shadow-soft">
-            <Quote size={18} className="text-white" />
-          </span>
-          <div className="flex-1">
-            <div className="section-eyebrow mb-1.5">Flora's read on the idea</div>
-            <p className="display text-[22px] leading-snug text-forest-500">
-              "{floraNote.split('—')[0]}— <span className="italic-accent text-sage-500">{floraNote.split('—').slice(1).join('—') || floraNote}</span>"
-            </p>
+      {/* Flora's note — only shown if there's a real note */}
+      {floraNote && (
+        <Card className="relative overflow-hidden !p-7">
+          <div className="absolute -left-10 top-1/2 -translate-y-1/2 h-48 w-48 rounded-full gradient-soft-peach opacity-50 blur-2xl" />
+          <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl gradient-orb-flora shadow-soft">
+              <Quote size={18} className="text-white" />
+            </span>
+            <div className="flex-1">
+              <div className="section-eyebrow mb-1.5">Flora's read on the idea</div>
+              <p className="display text-[22px] leading-snug text-forest-500">
+                "{floraNote.includes('—')
+                  ? <>{floraNote.split('—')[0]}— <span className="italic-accent text-sage-500">{floraNote.split('—').slice(1).join('—')}</span></>
+                  : floraNote}"
+              </p>
+            </div>
+            <AskWhyButton>What changed?</AskWhyButton>
           </div>
-          <AskWhyButton>What changed?</AskWhyButton>
-        </div>
-      </Card>
+        </Card>
+      )}
 
       {/* Clarity + Assumptions */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_1.4fr]">

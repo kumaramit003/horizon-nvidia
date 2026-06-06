@@ -187,7 +187,13 @@ function AuthedApp({ user, onSignOut }) {
       />
 
       <main className="flex min-w-0 flex-1 flex-col">
-        <TopBar page={page} recentVoice={recentVoice} user={user} onSignOut={onSignOut} />
+        <TopBar
+          page={page}
+          recentVoice={recentVoice}
+          user={user}
+          onSignOut={onSignOut}
+          workspaceName={dashboard?.idea?.title || ''}
+        />
         <div className="flex-1 overflow-y-auto px-9 py-8">
           <PageComponent dashboard={dashboard} discoveryId={discoveryId} onRerun={rerunCurrent} />
           <div className="h-24" />

@@ -1,54 +1,26 @@
 import React, { useState } from 'react'
-import { Users, MessageSquare, Building2, HeartPulse, CalendarDays, ArrowUpRight, Sparkles, Copy, Check } from 'lucide-react'
-import { Card, SectionHeader, Confidence, Tag, VoiceCommandBlock, AskWhyButton, SourceChip } from '../components/ui'
-
-const segments = [
-  { name: 'Office managers',      need: 'Reliable team catering',     pay: 'High',   channel: 'Direct outreach',                conf: 'Medium',      icon: Building2,   tone: 'peach' },
-  { name: 'Muslim professionals', need: 'Halal healthy lunch',        pay: 'Medium', channel: 'Local ads · office partnerships', conf: 'Medium',     icon: Users,       tone: 'lavender' },
-  { name: 'HR & wellness teams',  need: 'Healthy employee meals',     pay: 'High',   channel: 'LinkedIn · email',               conf: 'Low-Medium',  icon: HeartPulse,  tone: 'mint' },
-  { name: 'Event organisers',     need: 'Halal catering for events',  pay: 'High',   channel: 'Partnerships',                   conf: 'Medium',      icon: CalendarDays,tone: 'butter' },
-]
-
-const personas = [
-  {
-    name: 'Aysha',
-    title: 'Busy Finance Professional',
-    role: 'Analyst · Liverpool Street',
-    pain: 'Can never find a fast, healthy, halal lunch near the office.',
-    trigger: 'Short lunch break, long workdays.',
-    offer: 'Pre-order bowl ready in 5 minutes.',
-    tone: 'peach',
-    initials: 'A',
-  },
-  {
-    name: 'Omar',
-    title: 'Office Manager',
-    role: 'Ops · 80-person scale-up',
-    pain: 'Needs reliable catering for team lunches and client meetings.',
-    trigger: 'Weekly team lunches, client events, all-hands.',
-    offer: 'Recurring corporate lunch package.',
-    tone: 'lavender',
-    initials: 'O',
-  },
-]
-
-const interviewQs = [
-  'How often do you order lunch at work?',
-  'What makes you choose one lunch provider over another?',
-  'Would your team use recurring catering?',
-  'What price would feel reasonable per head?',
-]
+import { MessageSquare, ArrowUpRight, Sparkles, Copy, Check } from 'lucide-react'
+import { Card, SectionHeader, Confidence, Tag, VoiceCommandBlock, AskWhyButton, SourceChip, EmptyPage } from '../components/ui'
+import { DynIcon } from '../lib/icons'
 
 const payTone = (v) =>
   v === 'High'   ? 'bg-mint-100 border-mint-200 text-ink-800'
   : v === 'Low'  ? 'bg-rose-100 border-rose-200 text-ink-800'
                  : 'bg-butter-100 border-butter-200 text-ink-800'
 
+const numberWord = (n) =>
+  ({ 1: 'One', 2: 'Two', 3: 'Three', 4: 'Four', 5: 'Five', 6: 'Six' }[n] || String(n))
+
+const confLevel = (score) => (score >= 70 ? 'High' : score >= 45 ? 'Medium' : 'Low')
+
 export default function TargetAudience({ dashboard }) {
-  const _segments = dashboard?.segments?.length ? dashboard.segments : segments
-  const _personas = dashboard?.personas?.length ? dashboard.personas : personas
-  const _interviewQs = dashboard?.interview_questions?.length ? dashboard.interview_questions : interviewQs
-  const _audienceConf = dashboard?.audience_confidence || 62
+  const _segments = dashboard?.segments?.length ? dashboard.segments : []
+  const _personas = dashboard?.personas?.length ? dashboard.personas : []
+  const _interviewQs = dashboard?.interview_questions?.length ? dashboard.interview_questions : []
+  const _audienceConf = dashboard?.audience_confidence ?? 0
+  const hasAny = _segments.length || _personas.length || _interviewQs.length
+  if (!hasAny) return <EmptyPage label="audience analysis" />
+
   return (
     <div className="space-y-10">
       {/* Headline */}
@@ -56,9 +28,9 @@ export default function TargetAudience({ dashboard }) {
         <Card className="relative overflow-hidden !p-8">
           <div className="absolute -right-12 -top-12 h-44 w-44 rounded-full gradient-soft-lavender opacity-60 blur-2xl" />
           <div className="relative">
-            <Tag kind="Insight">4 segments worth testing</Tag>
+            <Tag kind="Insight">{_segments.length} segment{_segments.length === 1 ? '' : 's'} worth testing</Tag>
             <h2 className="mt-4 display text-[36px] leading-tight text-ink-900">
-              Four people who could become <span className="italic-accent text-peach-500">your first customer.</span>
+              {numberWord(_segments.length)} {_segments.length === 1 ? 'person' : 'people'} who could become <span className="italic-accent text-peach-500">your first customer.</span>
             </h2>
             <p className="mt-3 max-w-[60ch] text-[15.5px] text-ink-500">
               Ranked by combined demand × willingness to pay. Start with the segment you can reach in a week, not the one that looks biggest on paper.
@@ -72,12 +44,15 @@ export default function TargetAudience({ dashboard }) {
             <div className="section-eyebrow">Audience confidence</div>
             <div className="mt-2 flex items-end gap-2">
               <span className="display text-[60px] leading-none text-ink-900">{_audienceConf}</span>
-              <span className="mb-2 text-[14px] text-ink-500">/ 100 · Medium</span>
+              <span className="mb-2 text-[14px] text-ink-500">/ 100 · {confLevel(_audienceConf)}</span>
             </div>
             <ul className="mt-4 space-y-2 text-[13.5px] text-ink-700">
-              <li className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-mint-300" /> Office density supports the demand story.</li>
-              <li className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-mint-300" /> Halal + healthy is a clearly underserved niche.</li>
-              <li className="flex items-start gap-2"><span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-butter-300" /> Repeat-purchase behaviour still needs validation.</li>
+              {_segments.slice(0, 3).map((s, i) => (
+                <li key={s.name} className="flex items-start gap-2">
+                  <span className={`mt-1.5 h-1.5 w-1.5 rounded-full ${i === 0 ? 'bg-mint-300' : i === 1 ? 'bg-mint-300' : 'bg-butter-300'}`} />
+                  {s.name} — {s.need.toLowerCase()}.
+                </li>
+              ))}
             </ul>
           </div>
         </Card>
@@ -98,14 +73,13 @@ export default function TargetAudience({ dashboard }) {
         />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {_segments.map((s, idx) => {
-            const Icon = s.icon
             return (
               <div key={s.name} className="card !p-6 relative overflow-hidden">
                 <div className={`absolute -right-10 -top-10 h-32 w-32 rounded-full gradient-soft-${s.tone} opacity-60 blur-2xl`} />
                 <div className="relative">
                   <div className="flex items-center gap-3">
                     <span className={`grid h-11 w-11 place-items-center rounded-2xl gradient-soft-${s.tone}`}>
-                      <Icon size={18} className="text-ink-900" />
+                      <DynIcon name={s.icon} size={18} className="text-ink-900" />
                     </span>
                     <div>
                       <div className="display text-[20px] leading-tight text-ink-900">{s.name}</div>
@@ -129,7 +103,7 @@ export default function TargetAudience({ dashboard }) {
       <section>
         <SectionHeader
           eyebrow="Personas"
-          title="The two people in your head"
+          title={`The ${numberWord(_personas.length).toLowerCase()} ${_personas.length === 1 ? 'person' : 'people'} in your head`}
           right={<button className="btn-ghost text-[12.5px]"><Sparkles size={12} /> Generate another</button>}
         />
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -162,7 +136,7 @@ export default function TargetAudience({ dashboard }) {
         <Card className="!p-7">
           <SectionHeader
             eyebrow="Customer discovery"
-            title="Ten questions to ask 10 people this week"
+            title={`${numberWord(_interviewQs.length)} question${_interviewQs.length === 1 ? '' : 's'} to ask real people this week`}
             right={
               <button
                 className="btn-ghost text-[12.5px]"

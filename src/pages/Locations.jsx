@@ -1,13 +1,6 @@
 import React, { useState } from 'react'
-import { MapPin, Layers, CheckCircle2, AlertTriangle, ArrowRight } from 'lucide-react'
-import { Card, SectionHeader, Tag, AskWhyButton, VoiceCommandBlock, SourceChip } from '../components/ui'
-
-const locations = [
-  { id: 'liverpool', name: 'Liverpool Street', demand: 'High',        compete: 'High',   transport: 'High', cost: 'High',   b2b: 'High',   reco: 'Best for office catering',  score: 78, x: 60, y: 42, primary: true },
-  { id: 'canary',    name: 'Canary Wharf',     demand: 'High',        compete: 'Medium', transport: 'High', cost: 'High',   b2b: 'High',   reco: 'Strong corporate market',    score: 74, x: 78, y: 64 },
-  { id: 'white',     name: 'Whitechapel',      demand: 'Medium',      compete: 'Medium', transport: 'High', cost: 'Medium', b2b: 'Medium', reco: 'Good for halal niche',       score: 66, x: 67, y: 47 },
-  { id: 'stratford', name: 'Stratford',        demand: 'Medium-High', compete: 'Medium', transport: 'High', cost: 'Medium', b2b: 'Medium', reco: 'Good test market',           score: 64, x: 86, y: 30 },
-]
+import { MapPin, Layers, AlertTriangle, ArrowRight } from 'lucide-react'
+import { Card, SectionHeader, Tag, AskWhyButton, VoiceCommandBlock, SourceChip, EmptyPage } from '../components/ui'
 
 const layers = [
   { id: 'customers',  label: 'Customer density', color: '#FF9259' },
@@ -26,7 +19,17 @@ const badTone = (v) =>
   : v === 'Medium' ? 'bg-butter-100 border-butter-200 text-ink-800'
   : 'bg-mint-100 border-mint-200 text-ink-800'
 
-function MapPlaceholder({ activeLayers, onToggle }) {
+const isStrong = (v) => v === 'High' || v === 'Medium-High'
+
+const Blob = ({ x, y, color, size }) => (
+  <span className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl"
+    style={{ left: `${x}%`, top: `${y}%`, width: size, height: size, background: color }} />
+)
+const Pin = ({ x, y, label }) => (
+  <span className="absolute -translate-x-1/2 -translate-y-1/2 text-[9.5px] font-mono text-sky-300" style={{ left: `${x}%`, top: `${y - 5}%` }}>● {label}</span>
+)
+
+function MapPlaceholder({ locations, activeLayers, onToggle }) {
   return (
     <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-black/[0.06] bg-cream-50">
       <div className="absolute inset-0 dot-grid opacity-70" />
@@ -35,28 +38,19 @@ function MapPlaceholder({ activeLayers, onToggle }) {
         <path d="M -5 38 C 20 28, 35 50, 55 42 S 90 32, 110 40" fill="none" stroke="#7AABD4" strokeWidth="3" opacity="0.10" />
       </svg>
 
-      {activeLayers.customers && (
-        <>
-          <Blob x={60} y={42} color="rgba(255,146,89,0.32)" size={170} />
-          <Blob x={78} y={62} color="rgba(255,146,89,0.28)" size={140} />
-          <Blob x={86} y={30} color="rgba(255,146,89,0.20)" size={110} />
-        </>
-      )}
-      {activeLayers.competitors && (
-        <>
-          <Blob x={58} y={40} color="rgba(255,138,145,0.28)" size={130} />
-          <Blob x={76} y={62} color="rgba(255,138,145,0.22)" size={100} />
-        </>
-      )}
-      {activeLayers.opportunity && <Blob x={67} y={47} color="rgba(157,217,171,0.30)" size={130} />}
-      {activeLayers.transport && (
-        <>
-          <Pin x={60} y={42} label="LST" />
-          <Pin x={78} y={62} label="CWF" />
-          <Pin x={67} y={47} label="WCH" />
-          <Pin x={86} y={30} label="STR" />
-        </>
-      )}
+      {/* Demand/opportunity/transport overlays derived from the real locations */}
+      {activeLayers.customers && locations.map(l => (
+        <Blob key={`c-${l.id}`} x={l.x} y={l.y} color="rgba(255,146,89,0.30)" size={isStrong(l.demand) ? 170 : 120} />
+      ))}
+      {activeLayers.competitors && locations.filter(l => l.compete === 'High').map(l => (
+        <Blob key={`x-${l.id}`} x={l.x} y={l.y} color="rgba(255,138,145,0.26)" size={120} />
+      ))}
+      {activeLayers.opportunity && locations.filter(l => l.score >= 65).map(l => (
+        <Blob key={`o-${l.id}`} x={l.x} y={l.y} color="rgba(157,217,171,0.28)" size={120} />
+      ))}
+      {activeLayers.transport && locations.filter(l => isStrong(l.transport)).map(l => (
+        <Pin key={`t-${l.id}`} x={l.x} y={l.y} label={l.name.slice(0, 3).toUpperCase()} />
+      ))}
 
       {locations.map(l => (
         <button key={l.id} className="absolute z-10 -translate-x-1/2 -translate-y-1/2" style={{ left: `${l.x}%`, top: `${l.y}%` }}>
@@ -87,19 +81,34 @@ function MapPlaceholder({ activeLayers, onToggle }) {
   )
 }
 
-const Blob = ({ x, y, color, size }) => (
-  <span className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl"
-    style={{ left: `${x}%`, top: `${y}%`, width: size, height: size, background: color }} />
-)
-const Pin = ({ x, y, label }) => (
-  <span className="absolute -translate-x-1/2 -translate-y-1/2 text-[9.5px] font-mono text-sky-300" style={{ left: `${x}%`, top: `${y - 5}%` }}>● {label}</span>
-)
+function deriveGood(loc) {
+  const out = []
+  if (isStrong(loc.demand)) out.push('Strong customer demand')
+  if (isStrong(loc.transport)) out.push('Excellent transport access')
+  if (isStrong(loc.b2b)) out.push('High B2B potential')
+  if (loc.cost === 'Low' || loc.cost === 'Medium') out.push('Manageable cost base')
+  if (loc.compete === 'Low' || loc.compete === 'Medium') out.push('Less crowded market')
+  return out.length ? out : ['A balanced all-round option']
+}
+
+function deriveWatch(loc) {
+  const out = []
+  if (loc.compete === 'High') out.push('High competition')
+  if (loc.cost === 'High') out.push('Likely high rent / rates')
+  if (!isStrong(loc.demand)) out.push('Demand needs validation')
+  if (!isStrong(loc.transport)) out.push('Transport access is limited')
+  return out.length ? out : ['No major red flags — still validate locally']
+}
 
 export default function Locations({ dashboard }) {
-  const _locations = dashboard?.locations?.length ? dashboard.locations : locations
+  const _locations = dashboard?.locations?.length ? dashboard.locations : []
   const [activeLayers, setActiveLayers] = useState({ customers: true, competitors: true, transport: true, opportunity: false })
   const toggle = id => setActiveLayers(s => ({ ...s, [id]: !s[id] }))
-  const selected = locations[0]
+
+  if (!_locations.length) return <EmptyPage label="location analysis" />
+
+  // Top pick = explicit primary, else highest score.
+  const selected = _locations.find(l => l.primary) || [..._locations].sort((a, b) => b.score - a.score)[0]
 
   return (
     <div className="space-y-10">
@@ -111,7 +120,7 @@ export default function Locations({ dashboard }) {
             description="Layers built from public London Datastore sources."
             right={<AskWhyButton>Data sources</AskWhyButton>}
           />
-          <MapPlaceholder activeLayers={activeLayers} onToggle={toggle} />
+          <MapPlaceholder locations={_locations} activeLayers={activeLayers} onToggle={toggle} />
           <div className="mt-4 flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-ink-500">Built from</span>
             <SourceChip name="Workplace Zone Statistics" slug="workplace-zone-statistics" small />
@@ -134,22 +143,14 @@ export default function Locations({ dashboard }) {
             </div>
 
             <div className="mt-5 space-y-3">
-              <Block label="What's good" tone="mint" items={[
-                'Strong office density',
-                'Excellent transport access',
-                'High B2B catering potential',
-              ]} />
-              <Block label="Watch out" tone="rose" items={[
-                'High competition',
-                'Likely high rent',
-                'Less weekend / family demand',
-              ]} />
+              <Block label="What's good" tone="mint" items={deriveGood(selected)} />
+              <Block label="Watch out" tone="rose" items={deriveWatch(selected)} />
             </div>
 
             <div className="mt-5 rounded-2xl border border-peach-200 bg-peach-50 p-4">
               <Tag kind="Recommended">Finn's call</Tag>
               <p className="mt-2 text-[14px] leading-relaxed text-ink-900">
-                Target Liverpool Street for B2B sales — but operate from a <span className="italic-accent text-peach-500">lower-cost kitchen or pop-up</span> before ever opening a storefront.
+                {selected.reco || `${selected.name} scores ${selected.score}/100 on fit for this business.`}
               </p>
               <button className="mt-3 btn-coral text-[12.5px]">Apply to plan <ArrowRight size={12} /></button>
             </div>
@@ -161,7 +162,7 @@ export default function Locations({ dashboard }) {
       <Card className="!p-7">
         <SectionHeader
           eyebrow="Locations side by side"
-          title="Four areas, one comparison"
+          title={`${_locations.length} area${_locations.length === 1 ? '' : 's'}, one comparison`}
           right={<button className="btn-ghost text-[12.5px]"><MapPin size={12} /> Add area</button>}
         />
         <div className="overflow-hidden rounded-2xl border border-black/[0.05]">
@@ -178,13 +179,13 @@ export default function Locations({ dashboard }) {
               </tr>
             </thead>
             <tbody>
-              {locations.map(l => (
-                <tr key={l.id} className={`border-t border-black/[0.04] ${l.primary ? 'bg-peach-50/60' : 'hover:bg-cream-50'}`}>
+              {_locations.map(l => (
+                <tr key={l.id} className={`border-t border-black/[0.04] ${l.id === selected.id ? 'bg-peach-50/60' : 'hover:bg-cream-50'}`}>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <MapPin size={13} className={l.primary ? 'text-peach-500' : 'text-sky-300'} />
+                      <MapPin size={13} className={l.id === selected.id ? 'text-peach-500' : 'text-sky-300'} />
                       <span className="font-medium text-ink-900">{l.name}</span>
-                      {l.primary && <Tag kind="Recommended">Top pick</Tag>}
+                      {l.id === selected.id && <Tag kind="Recommended">Top pick</Tag>}
                     </div>
                   </td>
                   <td className="px-4 py-3"><span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${goodTone(l.demand)}`}>{l.demand}</span></td>
@@ -206,8 +207,8 @@ export default function Locations({ dashboard }) {
           <ul className="space-y-3">
             {[
               'Rent and rates differ massively street-by-street — get quotes from 3 agents before estimating cashflow.',
-              'Liverpool Street weekend footfall drops sharply. Plan revenue for Mon–Fri at first.',
-              'Stratford gives you the most price flexibility — useful for a cheaper pilot kitchen.',
+              'Footfall varies by day and season. Confirm the demand pattern matches your opening hours.',
+              `${selected.name} is your top pick, but visit each shortlisted area in person before committing.`,
             ].map((t) => (
               <li key={t} className="flex gap-3 rounded-2xl bg-cream-50 px-4 py-3 text-[14px] text-ink-900">
                 <AlertTriangle size={15} className="mt-0.5 shrink-0 text-butter-300" />
@@ -220,8 +221,8 @@ export default function Locations({ dashboard }) {
         <VoiceCommandBlock
           commands={[
             'Compare with Shoreditch.',
-            'What if I target weekend families?',
             'Find a lower-cost area with similar demand.',
+            'Which area is best for a lean start?',
           ]}
         />
       </div>

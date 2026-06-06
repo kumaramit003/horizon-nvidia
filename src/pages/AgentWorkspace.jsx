@@ -1,34 +1,12 @@
 import React, { useState } from 'react'
 import {
-  Mic, Users, BarChart3, MapPin, PoundSterling, ShieldAlert, ListChecks,
-  Database, Activity, AlertCircle, ExternalLink, RefreshCw, Search, Globe,
-  MessageSquare, Sprout, Leaf
+  Mic, BarChart3, Database, Activity, AlertCircle, ExternalLink,
+  RefreshCw, Search, Globe, MessageSquare
 } from 'lucide-react'
 import { Card, SectionHeader, Tag, Confidence, AskWhyButton } from '../components/ui'
 import { LeafMark, Tagline } from '../components/Brand'
 import { LONDON_DATASETS } from '../data/londonDatasets'
-
-const floraModules = [
-  { name: 'Idea interview',   desc: 'Captured idea, why, budget, audience hint.', icon: Mic,         status: 'done', time: '8m ago' },
-  { name: 'Profile builder',  desc: 'Drafted founder profile + clarity score.',   icon: MessageSquare, status: 'done', time: '7m ago' },
-  { name: 'Assumption probe', desc: 'Surfaced 4 assumptions for you to challenge.', icon: ShieldAlert, status: 'done', time: '7m ago' },
-]
-
-const finnModules = [
-  { name: 'Target Audience',       desc: 'Generated 4 segments using ward-level demographics.',  icon: Users,        status: 'done',    time: '5m ago', sources: 3 },
-  { name: 'Market Data',           desc: 'Analysed business birth/death + footfall signals.',    icon: BarChart3,    status: 'done',    time: '5m ago', sources: 4 },
-  { name: 'Location Intelligence', desc: 'Compared 4 candidate locations across 6 datasets.',    icon: MapPin,       status: 'done',    time: '4m ago', sources: 6 },
-  { name: 'Funding & Grants',      desc: 'Matched founder profile to the GLA support directory.', icon: PoundSterling,status: 'running', time: 'now',    sources: 2 },
-  { name: 'Risk',                  desc: 'Flagged competitor saturation + rent exposure.',       icon: ShieldAlert,  status: 'done',    time: '3m ago', sources: 3 },
-  { name: 'Launch Plan',           desc: 'Synthesised 7-day and 90-day plans.',                  icon: ListChecks,   status: 'queued',  time: 'queued', sources: 0 },
-]
-
-const log = [
-  { text: 'Office-worker demand assumed from business density signals.', conf: 'Medium', who: 'Finn' },
-  { text: 'Rent costs estimated as proxy via VOA floorspace data.',      conf: 'Medium', who: 'Finn' },
-  { text: 'Grant eligibility requires confirmation on provider site.',   conf: 'Low',    who: 'Finn' },
-  { text: 'Founder timeline assumes side-project to full-time switch.',  conf: 'Medium', who: 'Flora' },
-]
+import { DynIcon } from '../lib/icons'
 
 const statusPill = {
   done:    'bg-sage-100 border-sage-200 text-forest-500',
@@ -36,7 +14,11 @@ const statusPill = {
   queued:  'bg-cream-50 border-ink-100 text-ink-500',
 }
 
-export default function AgentWorkspace({ dashboard: _dashboard, onRerun }) {
+export default function AgentWorkspace({ dashboard, onRerun }) {
+  const floraModules = dashboard?.flora_modules?.length ? dashboard.flora_modules : []
+  const finnModules = dashboard?.finn_modules?.length ? dashboard.finn_modules : []
+  const log = dashboard?.agent_log?.length ? dashboard.agent_log : []
+
   const [rerunning, setRerunning] = useState(false)
   const [rerunError, setRerunError] = useState('')
   const handleRerun = async () => {
@@ -85,11 +67,10 @@ export default function AgentWorkspace({ dashboard: _dashboard, onRerun }) {
 
             <ul className="relative mt-5 space-y-2">
               {floraModules.map(m => {
-                const Icon = m.icon
                 return (
                   <li key={m.name} className="flex items-center gap-3 rounded-2xl bg-cream-50 px-3.5 py-2.5">
                     <span className="grid h-8 w-8 place-items-center rounded-xl bg-white text-forest-500 shadow-soft">
-                      <Icon size={13} />
+                      <DynIcon name={m.icon} size={13} />
                     </span>
                     <div className="flex-1 leading-tight">
                       <div className="text-[13px] font-semibold text-forest-500">{m.name}</div>
@@ -102,7 +83,7 @@ export default function AgentWorkspace({ dashboard: _dashboard, onRerun }) {
             </ul>
             <div className="relative mt-4 flex items-center gap-2">
               <button className="btn-ghost text-[12px]"><MessageSquare size={12} /> Resume with Flora</button>
-              <span className="text-[11.5px] text-ink-500">3 modules · 1 voice interview</span>
+              <span className="text-[11.5px] text-ink-500">{floraModules.length} module{floraModules.length === 1 ? '' : 's'} · 1 voice interview</span>
             </div>
           </div>
 
@@ -130,11 +111,10 @@ export default function AgentWorkspace({ dashboard: _dashboard, onRerun }) {
 
             <ul className="relative mt-5 space-y-2">
               {finnModules.slice(0, 4).map(m => {
-                const Icon = m.icon
                 return (
                   <li key={m.name} className="flex items-center gap-3 rounded-2xl bg-cream-50 px-3.5 py-2.5">
                     <span className="grid h-8 w-8 place-items-center rounded-xl bg-white text-forest-500 shadow-soft">
-                      <Icon size={13} />
+                      <DynIcon name={m.icon} size={13} />
                     </span>
                     <div className="flex-1 leading-tight">
                       <div className="text-[13px] font-semibold text-forest-500">{m.name}</div>
@@ -147,7 +127,11 @@ export default function AgentWorkspace({ dashboard: _dashboard, onRerun }) {
                 )
               })}
             </ul>
-            <div className="relative mt-3 text-[11.5px] text-ink-500">+ 2 more modules: Risk · Launch Plan</div>
+            {finnModules.length > 4 && (
+              <div className="relative mt-3 text-[11.5px] text-ink-500">
+                + {finnModules.length - 4} more module{finnModules.length - 4 === 1 ? '' : 's'}: {finnModules.slice(4).map(m => m.name).join(' · ')}
+              </div>
+            )}
             <div className="relative mt-3 flex items-center gap-2">
               <button
                 onClick={handleRerun}
@@ -158,7 +142,7 @@ export default function AgentWorkspace({ dashboard: _dashboard, onRerun }) {
                 <RefreshCw size={12} className={rerunning ? 'animate-spin' : ''} />
                 {rerunning ? 'Re-running Finn…' : 'Re-run analysis'}
               </button>
-              <span className="text-[11.5px] text-ink-500">6 modules · {LONDON_DATASETS.length} datasets</span>
+              <span className="text-[11.5px] text-ink-500">{finnModules.length} module{finnModules.length === 1 ? '' : 's'} · {LONDON_DATASETS.length} datasets</span>
             </div>
           </div>
         </div>
@@ -253,12 +237,11 @@ export default function AgentWorkspace({ dashboard: _dashboard, onRerun }) {
             <div className="absolute left-6 top-2 bottom-2 w-px bg-gradient-to-b from-peach-400 via-cream-200 to-forest-400" />
             <ul className="space-y-3">
               {[...floraModules.map(m => ({ ...m, who: 'Flora' })), ...finnModules.map(m => ({ ...m, who: 'Finn' }))].map((a, idx) => {
-                const Icon = a.icon
                 const isFlora = a.who === 'Flora'
                 return (
                   <li key={a.name + idx} className="relative flex items-start gap-4">
                     <div className={`relative z-10 grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${isFlora ? 'gradient-orb-flora' : 'gradient-orb-finn'}`}>
-                      <Icon size={16} className="text-white" />
+                      <DynIcon name={a.icon} size={16} className="text-white" />
                     </div>
                     <div className="flex-1 card !p-4">
                       <div className="flex items-center gap-2">

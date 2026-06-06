@@ -12,7 +12,7 @@ const pageMeta = {
   agents:     { eyebrow: 'Flora & Finn',      title: 'How your two advisors figured this out', agent: 'both' },
 }
 
-export default function TopBar({ page, recentVoice, user, onSignOut }) {
+export default function TopBar({ page, recentVoice, user, onSignOut, workspaceName }) {
   const meta = pageMeta[page]
   return (
     <header className="sticky top-0 z-20 border-b border-black/[0.06] bg-cream-100/85 px-9 pt-5 pb-6 backdrop-blur-xl">
@@ -21,7 +21,7 @@ export default function TopBar({ page, recentVoice, user, onSignOut }) {
         <div className="flex min-w-0 items-center gap-2 text-[12.5px] text-ink-500">
           <span>Plan</span>
           <ChevronRight size={13} className="text-ink-300" />
-          <span className="truncate text-forest-500">Halal Healthy Lunch &amp; Catering</span>
+          <span className="truncate text-forest-500">{workspaceName || 'Workspace'}</span>
           <ChevronRight size={13} className="text-ink-300" />
           <span className="text-ink-700">{meta.eyebrow}</span>
         </div>

@@ -148,6 +148,21 @@ export function VoiceCommandBlock({ commands, title = 'Try with your voice' }) {
   )
 }
 
+export function EmptyPage({ label = 'data' }) {
+  return (
+    <div className="card !p-10 text-center">
+      <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl gradient-soft-peach">
+        <Sparkles size={18} className="text-peach-500" />
+      </div>
+      <h2 className="mt-5 display text-[24px] text-forest-500">No {label} yet</h2>
+      <p className="mt-2 max-w-[460px] mx-auto text-[14px] text-ink-500">
+        Finn hasn't generated this section for the current workspace.
+        Open <strong>Flora &amp; Finn</strong> and click <strong>Re-run analysis</strong> to build it.
+      </p>
+    </div>
+  )
+}
+
 export function SourceChip({ name, publisher, slug, small }) {
   return (
     <a
