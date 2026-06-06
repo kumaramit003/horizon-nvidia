@@ -118,8 +118,18 @@ async def get_discovery(discovery_id: str, user: Annotated[dict, Depends(current
     doc = await db.discoveries.find_one({"_id": _oid(discovery_id), "user_id": user["_id"]})
     if not doc:
         raise HTTPException(404, "Discovery not found")
-    doc["_id"] = str(doc["_id"])
-    return doc
+    # Return a JSON-safe subset. Raw Mongo docs carry ObjectId fields
+    # (_id, user_id) that FastAPI's encoder can't serialize.
+    return {
+        "id": str(doc["_id"]),
+        "workspace_name": doc.get("workspace_name"),
+        "status": doc.get("status"),
+        "error": doc.get("error"),
+        "dashboard": doc.get("dashboard") or {},
+        "intake": doc.get("intake"),
+        "created_at": doc.get("created_at"),
+        "updated_at": doc.get("updated_at"),
+    }
 
 
 @router.get("/{discovery_id}/dashboard")
