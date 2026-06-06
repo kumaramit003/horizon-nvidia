@@ -3,6 +3,7 @@ from typing import Annotated
 
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
 from ..agents.pipeline import run_discovery_pipeline
 from ..database import get_db
@@ -128,9 +129,6 @@ async def update_dashboard(discovery_id: str, updates: dict, user: Annotated[dic
 class RefineRequest(BaseModel):
     command: str
     persona: str | None = None  # "flora" | "finn" | None — informational only
-
-
-from pydantic import BaseModel  # noqa: E402  (used by RefineRequest above)
 
 
 @router.post("/{discovery_id}/refine")
