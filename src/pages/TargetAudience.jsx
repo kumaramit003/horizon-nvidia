@@ -44,7 +44,11 @@ const payTone = (v) =>
   : v === 'Low'  ? 'bg-rose-100 border-rose-200 text-ink-800'
                  : 'bg-butter-100 border-butter-200 text-ink-800'
 
-export default function TargetAudience() {
+export default function TargetAudience({ dashboard }) {
+  const _segments = dashboard?.segments?.length ? dashboard.segments : segments
+  const _personas = dashboard?.personas?.length ? dashboard.personas : personas
+  const _interviewQs = dashboard?.interview_questions?.length ? dashboard.interview_questions : interviewQs
+  const _audienceConf = dashboard?.audience_confidence || 62
   return (
     <div className="space-y-10">
       {/* Headline */}
@@ -67,7 +71,7 @@ export default function TargetAudience() {
           <div className="relative">
             <div className="section-eyebrow">Audience confidence</div>
             <div className="mt-2 flex items-end gap-2">
-              <span className="display text-[60px] leading-none text-ink-900">62</span>
+              <span className="display text-[60px] leading-none text-ink-900">{_audienceConf}</span>
               <span className="mb-2 text-[14px] text-ink-500">/ 100 · Medium</span>
             </div>
             <ul className="mt-4 space-y-2 text-[13.5px] text-ink-700">
@@ -93,7 +97,7 @@ export default function TargetAudience() {
           }
         />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {segments.map((s, idx) => {
+          {_segments.map((s, idx) => {
             const Icon = s.icon
             return (
               <div key={s.name} className="card !p-6 relative overflow-hidden">
@@ -129,7 +133,7 @@ export default function TargetAudience() {
           right={<button className="btn-ghost text-[12.5px]"><Sparkles size={12} /> Generate another</button>}
         />
         <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-          {personas.map(p => (
+          {_personas.map(p => (
             <div key={p.name} className="card relative overflow-hidden !p-7">
               <div className={`absolute -right-12 -top-12 h-44 w-44 rounded-full gradient-soft-${p.tone} opacity-60 blur-2xl`} />
               <div className="relative">
@@ -162,7 +166,7 @@ export default function TargetAudience() {
             right={<button className="btn-ghost text-[12.5px]"><MessageSquare size={12} /> Export script</button>}
           />
           <ol className="space-y-2.5">
-            {interviewQs.map((q, i) => (
+            {_interviewQs.map((q, i) => (
               <li key={q} className="flex items-center gap-4 rounded-2xl bg-cream-50 px-4 py-3">
                 <span className="display grid h-8 w-8 place-items-center rounded-full bg-white text-[15px] text-ink-900 shadow-soft">
                   {i + 1}

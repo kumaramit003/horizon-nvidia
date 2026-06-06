@@ -14,138 +14,292 @@
 |---|---|---|
 | Speech-to-text | **ElevenLabs Scribe (streaming)** | WebSocket, partial + final transcripts |
 | Text-to-speech | **ElevenLabs TTS (streaming)** | Separate voice IDs for Flora vs Finn (recommended) |
-| LLM | **Nemotron** | Likely NVIDIA Llama-3.1-Nemotron-70B or comparable; tool-calling required |
-| Agent orchestration | **NemoClaw** | Persona routing (Flora/Finn), skill registry, conversation state |
-| Skills | **One per London Datastore source** | Each = typed function with citations |
+| LLM | **Nemotron** | Runs **inside NemoClaw**, not called directly by backend |
+| Agent orchestration | **NemoClaw** | External runtime. Owns Nemotron, skills, and dataset access. |
+| Skills | **Implemented inside NemoClaw** | Each skill wraps a London Datastore source. **Backend never touches CSVs.** |
+| Backend | **FastAPI + asyncio + uvicorn** | Thin gateway. Audio + event broker only. No data layer. |
 | Frontend | React 18 + Vite + Tailwind + **Zustand** | Existing mock UI; add live state via WebSocket |
-| Backend | **Node + Hono + `ws`** | Single process gateway, holds WebSocket sessions |
-| Data cache | **SQLite or DuckDB** | Pre-baked, normalised, queried at <10ms |
-| Session store | **Upstash Redis** | Transcripts, profile draft, skill trace |
-| Hosting | **Fly.io / Railway** (backend) + **GitHub Pages** (frontend) | Persistent WS sessions needed for backend |
+| Session store | **Upstash Redis** (optional) | Transcripts + UI state per session |
+| Hosting | **Fly.io / Railway** (backend) + **GitHub Pages** (frontend) | Persistent WS sessions on backend |
+
+### What changed from earlier drafts
+
+- **Backend is FastAPI / Python**, not Node. Aligns with broader AI tooling
+  (Pydantic, httpx, official ElevenLabs SDK, NVIDIA libraries).
+- **Datasets are NOT exposed directly to the website.** The agent runtime
+  (NemoClaw) owns all dataset access via its skills. The backend's job is
+  to call NemoClaw and forward results — not to query data.
+- **No local SQLite / DuckDB / CSV layer in the backend.** Dataset baking,
+  caching, normalisation all happen inside NemoClaw.
 
 ---
 
 ## 2. Architecture
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        Browser (React + Vite)                          │
-│                                                                        │
-│   Mic capture ───► PCM frames                                          │
-│   Audio playback ◄── PCM chunks                                        │
-│   Zustand store ◄── UI events (skill outputs, transcript, agent state) │
-└────────────┬─────────────────────────────┬─────────────────────────────┘
-             │ WebSocket (audio bidirectional + UI events)
-             ▼                             ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│              Backend gateway (Node + Hono + ws)                         │
-│                                                                        │
-│   ┌──────────────┐    ┌──────────────────────┐    ┌────────────────┐   │
-│   │ ElevenLabs   │    │      NemoClaw        │    │  ElevenLabs    │   │
-│   │ STT          │───►│   (orchestrator)     │───►│  TTS streaming │   │
-│   │ (streaming)  │    │                      │    │                │   │
-│   └──────────────┘    │  ┌────────────────┐  │    └────────────────┘   │
-│                       │  │ Flora persona  │  │                         │
-│                       │  │ Finn persona   │  │                         │
-│                       │  │ Router         │  │                         │
-│                       │  │                │  │                         │
-│                       │  │ Nemotron LLM ──┼──┼──► Skill registry      │
-│                       │  └────────────────┘  │    (London datasets)    │
-│                       └──────────────────────┘                         │
-└────────────────────────────────────────────────────────────────────────┘
-                                                       │
-                                                       ▼
-                                       ┌──────────────────────────────┐
-                                       │ Skills (one per dataset)      │
-                                       │  workplace_zone_density       │
-                                       │  census_religion_share        │
-                                       │  business_demography          │
-                                       │  high_street_health           │
-                                       │  tfl_station_flow             │
-                                       │  voa_rent_proxy               │
-                                       │  gla_grants_match             │
-                                       │  food_business_density        │
-                                       │  planning_apps_recent         │
-                                       │  air_quality                  │
-                                       │  → score_location (composite) │
-                                       │  → generate_launch_plan       │
-                                       └──────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                       Browser (React + Vite)                          │
+│                                                                      │
+│   Mic capture ───► PCM frames                                        │
+│   Audio playback ◄── PCM chunks                                      │
+│   Zustand store ◄── UI events (skill outputs, transcript, agent)     │
+└──────────────┬──────────────────────────────────────────┬─────────────┘
+               │ WebSocket (PCM audio + UI events)        │
+               ▼                                          ▲
+┌──────────────────────────────────────────────────────────────────────┐
+│              FastAPI gateway (Python + asyncio + uvicorn)            │
+│                                                                      │
+│   ┌──────────────┐    ┌──────────────────────┐    ┌──────────────┐  │
+│   │ ElevenLabs   │───►│ Coordinator          │◄───│ ElevenLabs   │  │
+│   │ STT client   │    │ (asyncio task graph) │    │ TTS client   │  │
+│   └──────────────┘    └──────────┬───────────┘    └──────────────┘  │
+│                                  │                                   │
+│                                  ▼                                   │
+│                         NemoClaw client                              │
+│                       (the only "smart" call)                        │
+└──────────────────────────────────┬───────────────────────────────────┘
+                                   │ session protocol (HTTP+SSE / WS / SDK)
+                                   ▼
+                       ┌────────────────────────┐
+                       │   NemoClaw runtime     │
+                       │                        │
+                       │   • Nemotron LLM       │
+                       │   • Persona routing    │
+                       │   • Skill registry     │◄── London Datastore
+                       │   • Dataset access     │    (workplace zones,
+                       │                        │     census, TfL, GLA
+                       │                        │     funding, etc.)
+                       └────────────────────────┘
 ```
+
+The backend has no data libraries. The "intelligence" lives entirely inside
+NemoClaw. The backend's only job is to be a fast, reliable audio + event
+broker between the browser and the agent runtime.
 
 ---
 
-## 3. The audio loop
+## 3. What the FastAPI backend is responsible for
 
-ElevenLabs is not WebRTC-native (unlike OpenAI Realtime). Turn-taking is
-manual. Target end-to-end latency from user-stops-speaking → Flora-starts-
-responding: **< 1.2s**.
+Narrow. Five things:
+
+1. **Audio I/O over WebSocket** — accept PCM frames from the browser, send
+   PCM chunks back
+2. **ElevenLabs STT coordination** — stream mic audio in, surface partial
+   and final transcripts
+3. **ElevenLabs TTS coordination** — stream Nemotron text out, sentence by
+   sentence, with interrupt handling
+4. **NemoClaw session lifecycle** — open a session per founder, send user
+   turns, stream events back, close cleanly on disconnect
+5. **Event multiplexing to the browser** — forward every skill result,
+   persona switch, and turn boundary to the browser WebSocket so the
+   dashboard can react live
+
+That's it. No data processing, no skill implementations, no scoring logic.
+
+---
+
+## 4. The audio loop
+
+ElevenLabs is not WebRTC-native. Turn-taking is manual. Target end-to-end
+latency from user-stops-speaking → Flora-starts-responding: **< 1.2s**.
 
 1. **Browser** captures mic at 16kHz → 20ms PCM frames → WebSocket up to backend
 2. **Backend** streams audio to **ElevenLabs Scribe**. Receive `partial` + `final`
    transcripts.
-3. On `final` transcript, hand the text to **NemoClaw**. Mark any in-flight
-   TTS as `pending_interrupt`.
-4. NemoClaw selects persona (Flora vs Finn), picks the skill subset, calls
-   Nemotron with the system prompt + history + tool schemas.
-5. As Nemotron streams tokens, NemoClaw forwards **sentence-by-sentence**
+3. On `final` transcript, hand text to **NemoClaw**. Mark any in-flight TTS
+   as `pending_interrupt`.
+4. NemoClaw orchestrates internally (persona selection, skill calls, Nemotron
+   generation) and streams **events** back to the backend (text deltas,
+   sentence boundaries, skill results, persona switches).
+5. As each `sentence_boundary` event arrives, the backend pushes that sentence
    into **ElevenLabs TTS streaming** — do not wait for the full response.
 6. TTS chunks stream back to the browser → `AudioContext` playback queue.
-7. **In parallel**, every skill invocation emits a structured UI event over
-   the same WebSocket → Zustand store → dashboard section re-renders live.
+7. **In parallel**, every `skill_result` event is forwarded to the browser
+   WebSocket → Zustand store → dashboard section re-renders live.
 
 ### Interrupt handling
 
 There is no built-in interrupt primitive. Implement it:
 
-- Each turn gets a `tts_request_id`
-- On any new partial transcript activity from STT, cancel the previous
-  TTS stream server-side and send a `flush_audio` event to the browser
-- The browser's audio queue clears immediately on `flush_audio`
+- Each turn gets a `turn_id`
+- On any new partial transcript activity from STT, cancel the previous turn:
+  - Send `interrupt(turn_id)` to NemoClaw
+  - Drain the TTS queue
+  - Send `flush_audio` event to the browser to clear playback
+
+If NemoClaw doesn't have a native interrupt endpoint, simulate it by
+ignoring all subsequent events from the interrupted `turn_id`.
 
 ---
 
-## 4. Skill registry
+## 5. The NemoClaw client contract
 
-Skills are first-class. Each skill is a typed function with:
+This is the most important interface in the system. The FastAPI backend
+needs five things from NemoClaw:
 
-```ts
-type Skill = {
-  name: string
-  description: string          // shown to the LLM via tool schema
-  parameters: ZodSchema        // input shape
-  returns: ZodSchema           // output shape (with citations)
-  owner: 'flora' | 'finn' | 'meta'
-  execute: (params, ctx) => Promise<{ data: any, citations: Citation[] }>
-}
+### 5.1 Session lifecycle
 
-type Citation = {
-  slug: string                 // e.g. 'workplace-zone-statistics'
-  name: string                 // e.g. 'Workplace Zone Statistics'
-  url: string                  // https://data.london.gov.uk/dataset/<slug>
-  retrieved_at: string         // ISO timestamp
-}
+Open a session per founder. Close on browser disconnect. Sessions hold:
+
+- Conversation history
+- Active persona (Flora / Finn)
+- Founder profile draft
+- Skill trace
+
+### 5.2 Request schema — what the backend sends
+
+```python
+from typing import Optional, Literal
+from pydantic import BaseModel
+
+class SessionInit(BaseModel):
+    session_id: str
+    locale: str = "en-GB"
+    founder_hint: Optional[dict] = None
+
+class UserTurn(BaseModel):
+    session_id: str
+    transcript: str
+    turn_id: str
+    persona_hint: Optional[Literal["flora", "finn"]] = None  # explicit routing
+
+class Interrupt(BaseModel):
+    session_id: str
+    turn_id: str  # the turn being cancelled
 ```
 
-### Catalog → dashboard mapping
+### 5.3 Event schema — what NemoClaw streams back
 
-| Dashboard section | Owning agent | Skills called |
+```python
+class TextDelta(BaseModel):
+    type: Literal["text_delta"]
+    turn_id: str
+    persona: Literal["flora", "finn"]
+    delta: str
+
+class SentenceBoundary(BaseModel):
+    type: Literal["sentence_boundary"]  # cue: send this to TTS now
+    turn_id: str
+    sentence: str
+
+class SkillInvoked(BaseModel):
+    type: Literal["skill_invoked"]
+    turn_id: str
+    skill: str                    # e.g. "workplace_zone_density"
+    arguments: dict
+
+class SkillResult(BaseModel):
+    type: Literal["skill_result"]
+    turn_id: str
+    skill: str
+    data: dict                    # structured output for the dashboard
+    citations: list[Citation]     # London Datastore slugs + URLs
+
+class PersonaSwitch(BaseModel):
+    type: Literal["persona_switch"]
+    from_: Literal["flora", "finn"]
+    to: Literal["flora", "finn"]
+
+class TurnComplete(BaseModel):
+    type: Literal["turn_complete"]
+    turn_id: str
+
+class ErrorEvent(BaseModel):
+    type: Literal["error"]
+    code: str
+    message: str
+
+class Citation(BaseModel):
+    slug: str                     # e.g. "workplace-zone-statistics"
+    name: str                     # display name
+    url: str                      # full data.london.gov.uk URL
+    retrieved_at: str             # ISO timestamp
+```
+
+The backend forwards every `skill_result` straight to the browser WebSocket.
+The dashboard's existing `SourceChip` component renders citations natively.
+
+### 5.4 Transport — to be confirmed
+
+NemoClaw probably exposes one of:
+
+- **HTTP + Server-Sent Events** (recommended for hackathon — easy to consume
+  with `httpx.AsyncClient.stream`)
+- **WebSocket** (bidirectional, lower latency)
+- **gRPC streaming** (typed but heavier setup)
+- **Python SDK** (best if it wraps the above)
+
+See §11 open decisions.
+
+### 5.5 Coordination loop (FastAPI pseudo-code)
+
+```python
+async def handle_browser_ws(ws: WebSocket):
+    session_id = new_session_id()
+    stt = await elevenlabs.stt.connect(language="en-GB")
+    nemoclaw = NemoClawClient(api_key=...)
+    tts_queue = asyncio.Queue()
+
+    await nemoclaw.session_init(SessionInit(session_id=session_id))
+
+    await asyncio.gather(
+        pump_mic_to_stt(ws, stt),
+        pump_stt_to_nemoclaw(stt, nemoclaw, ws, tts_queue),
+        pump_nemoclaw_to_outputs(nemoclaw, ws, tts_queue),
+        pump_tts_to_browser(tts_queue, ws),
+    )
+
+async def pump_nemoclaw_to_outputs(nemoclaw, ws, tts_queue):
+    async for event in nemoclaw.stream_events():
+        match event.type:
+            case "sentence_boundary":
+                await tts_queue.put(event.sentence)
+            case "skill_result":
+                await ws.send_json(event.dict())
+            case "persona_switch":
+                await ws.send_json(event.dict())
+                # optionally swap TTS voice_id mid-stream
+            case "turn_complete":
+                await ws.send_json(event.dict())
+```
+
+Everything is asyncio queues + `httpx.AsyncClient.stream` for parsing SSE.
+No threads, no sync code in the hot path.
+
+---
+
+## 6. Skill catalog (lives inside NemoClaw)
+
+Skills are implemented inside the NemoClaw runtime. The backend doesn't
+implement them, but it does need to know:
+
+- Which skills exist (to know how to forward their results to dashboard sections)
+- The output shape of each skill (to validate before forwarding)
+
+### Dashboard → skill mapping
+
+| Dashboard section | Owning agent | Skills called (inside NemoClaw) |
 |---|---|---|
 | The idea | Flora | `update_profile`, `mark_assumption`, `score_clarity`, `handoff_to_finn` |
 | Who buys | Finn | `census_religion_share`, `workplace_zone_density`, `survey_of_londoners`, `rank_segments` |
 | Worth doing? | Finn | `business_demography`, `food_business_density`, `risk_radar`, `recommend_first_wedge` |
 | Where | Finn | `workplace_zone_density`, `tfl_station_flow`, `high_street_health`, `voa_rent_proxy`, `score_location` |
 | Money & grants | Finn | `voa_rent_proxy`, `gla_grants_match`, `funding_readiness_score` |
-| Your next 7 days | Finn | `generate_launch_plan` (consumes the outputs above) |
+| Your next 7 days | Finn | `generate_launch_plan` (consumes outputs above) |
 | Flora & Finn | meta | exposes the live skill trace |
 
-Every skill output flows into the existing `SourceChip` component on the
-frontend automatically — no per-section wiring once the skill returns
-citations.
+### Citation requirement
 
-### Required skills (minimum viable set)
+Every skill result NemoClaw returns **must** include the London Datastore
+citation(s) it used. The frontend's `SourceChip` component depends on this.
 
-The 12 we mocked in `src/data/londonDatasets.js`. For hackathon, focus on
-these **6 essentials** first — the rest can be stubbed:
+If NemoClaw doesn't include citations natively, the backend maintains a
+local lookup `skill_name → dataset_slug` and enriches the event before
+forwarding. (See §11 open decisions.)
+
+### Minimum viable skill set
+
+NemoClaw must support at least these **6 essentials** for a credible demo:
 
 1. `workplace_zone_density` — Workplace Zone Statistics
 2. `census_religion_share` — 2021 Census · Religion by Ward
@@ -154,111 +308,64 @@ these **6 essentials** first — the rest can be stubbed:
 5. `gla_grants_match` — GLA Funding & Support Directory
 6. `tfl_station_flow` — TfL Open Data
 
-Composite skills (built on top of the essentials):
+Plus the two composites:
 
-- `score_location` — weighted combination across workplace zones, TfL,
-  high streets, VOA, business demography. Returns ranked candidates +
-  per-area pros/cons.
-- `generate_launch_plan` — takes the founder profile + all Finn's
-  research outputs, returns the 7-day + 30/60/90 plan as structured data.
+- `score_location` — weighted ranking across multiple datasets
+- `generate_launch_plan` — synthesises everything into the 7-day + 30/60/90 plan
 
 ---
 
-## 5. NemoClaw orchestration logic
+## 7. NemoClaw persona logic (for context, not for backend to implement)
 
-NemoClaw is the brain. Pseudo-contract:
-
-```
-on user_transcript:
-  persona = route(transcript, current_context)
-    # rules:
-    # - "Flora, ..." → flora
-    # - "Finn, ..." → finn
-    # - if no profile yet → flora
-    # - else → flora for idea-shape questions, finn for everything else
-
-  skills = registry.skillsFor(persona)
-  system_prompt = personaPrompt(persona)
-  response = await nemotron.chat({
-    system: system_prompt,
-    history: session.history,
-    tools: skills.map(toToolSchema),
-    stream: true,
-  })
-
-  for chunk in response:
-    if chunk.type === 'text':
-      ttsStream.push(chunk.text)        # voice
-    if chunk.type === 'tool_call':
-      result = await registry.execute(chunk.name, chunk.args, ctx)
-      session.history.push(toolResult(chunk.id, result))
-      ws.send({ event: 'skill_result', skill: chunk.name, data: result })
-      # then continue the Nemotron stream with the tool result fed back
-```
+These are properties of the NemoClaw runtime, not the FastAPI backend.
+Including here so the backend's expectations are clear.
 
 ### Persona system prompts (essence)
 
 **Flora**
-> You are Flora, a warm, conversational discovery agent. Your only job
-> is to extract the founder's idea, motivation, constraints, and risk
-> tolerance through natural conversation. You speak in short, warm
-> sentences. You ask one question at a time. When you have enough,
-> call `handoff_to_finn`. Never speculate about analysis — that's Finn's job.
+> You are Flora, a warm, conversational discovery agent. Your only job is
+> to extract the founder's idea, motivation, constraints, and risk tolerance
+> through natural conversation. You speak in short, warm sentences. You ask
+> one question at a time. When you have enough, call `handoff_to_finn`.
+> Never speculate about analysis — that's Finn's job.
 
 **Finn**
 > You are Finn, an analytical research and planning agent. You have access
-> to London Datastore skills. Always cite the dataset slug you used.
-> Never invent numbers. Speak in concise, structured updates. Be honest
-> about confidence levels. Default to "potentially relevant" not "you
-> are eligible". When the user asks a question outside your skill set,
-> hand back to Flora.
+> to London Datastore skills. Always cite the dataset slug you used. Never
+> invent numbers. Speak in concise, structured updates. Be honest about
+> confidence levels. Default to "potentially relevant" not "you are
+> eligible". When the user asks a question outside your skill set, hand
+> back to Flora.
+
+### Routing rules NemoClaw should implement
+
+- `"Flora, ..."` → flora persona
+- `"Finn, ..."` → finn persona
+- No founder profile yet → flora
+- Profile present → flora for idea-shape questions, finn for everything else
 
 ---
 
-## 6. Data layer
-
-### Strategy
-
-Pre-bake datasets at build time. Don't query London Datastore live during
-the demo — it's too slow and brittle. Download once, normalise, ship.
+## 8. Python dependencies (backend)
 
 ```
-backend/
-  data/
-    raw/                          # downloaded CSVs (gitignored)
-      workplace_zone_stats.csv
-      census_2021_religion_ward.csv
-      business_demography.csv
-      high_streets_health.csv
-      tfl_station_flow.csv
-      gla_funding_directory.json
-    normalised/                   # checked in
-      workplace_zones.sqlite
-      ...
-    scripts/
-      bake.ts                     # ETL pipeline
+fastapi
+uvicorn[standard]
+websockets
+httpx[http2]              # async streaming HTTP (for SSE consumption)
+pydantic
+elevenlabs                # official SDK has WS streaming for TTS
+python-dotenv
+redis                     # session state (Upstash) — optional
+structlog                 # structured logs for debugging event flow
 ```
 
-### Per-skill data requirements
-
-| Skill | Source dataset | Index keys |
-|---|---|---|
-| `workplace_zone_density` | Workplace Zone Statistics 2011/2021 | by ward + WPZ id |
-| `census_religion_share` | Census 2021 TS030 | by ward code |
-| `business_demography` | ONS Business Demography UK | by borough + SIC (food = 56) |
-| `high_street_health` | GLA High Streets dataset | by high-street name |
-| `tfl_station_flow` | TfL Annual Origin-Destination | by station NAPTAN code |
-| `voa_rent_proxy` | VOA Floor Space + rateable value | by postcode prefix |
-| `gla_grants_match` | GLA Funding Directory (manually curated for demo) | filterable by sector, founder profile |
-
-### Citations
-
-Every skill response includes the source citation. The frontend's existing
-`SourceChip` component already renders the link to the Datastore page.
+**Notably absent:** no pandas, no sqlite3, no DuckDB, no NumPy, no data
+processing libraries. NemoClaw owns all of that.
 
 ---
 
-## 7. Frontend changes from the mock
+## 9. Frontend changes from the mock
 
 The current frontend is fully built; the work is **swapping mocked data
 for live agent state**.
@@ -266,19 +373,19 @@ for live agent state**.
 ### Add
 
 - **Zustand store** (`src/store/index.js`) with slices per dashboard section
-- **WebSocket client** (`src/lib/socket.js`) connecting to backend gateway
-- **Audio capture + playback** (`src/lib/audio.js`) with `AudioContext`
+- **WebSocket client** (`src/lib/socket.js`) connecting to FastAPI gateway
+- **Audio capture + playback** (`src/lib/audio.js`) using `AudioContext`
 - **Event handlers** mapping backend events → store mutations:
   - `transcript_partial` → update intake live caption
   - `transcript_final` → push to conversation history
   - `agent_speaking` → switch orb state, voice activity indicator
   - `skill_result` → mutate matching dashboard slice + add to trace
   - `flush_audio` → clear playback queue on interrupt
-  - `handoff` → swap active persona + orb gradient
+  - `persona_switch` → swap active persona + orb gradient
 
 ### Remove
 
-- All hardcoded conversation arrays
+- All hardcoded conversation arrays in `Intake.jsx`
 - All mocked dataset content (already in `src/data/londonDatasets.js` —
   keep the structure, replace values at runtime)
 - Hardcoded clarity scores, segment lists, location comparisons
@@ -292,103 +399,86 @@ for live agent state**.
 
 ---
 
-## 8. Build plan (chronological)
+## 10. Build plan (chronological)
 
 ### Phase 0 — De-risk (first 2 hours)
 
 Spike each high-risk integration independently. **If any fail, switch
 strategies before building around them.**
 
-- [ ] **Audio loop**: browser mic → ElevenLabs Scribe → text in console
-- [ ] **TTS streaming**: text in → ElevenLabs TTS websocket → audio playback
-- [ ] **Nemotron tool call**: send a prompt + one tool schema, get back a
-  valid tool invocation (validate against JSON schema)
-- [ ] **One real skill**: load Workplace Zone Stats into SQLite, query
-  "offices within 500m of Liverpool Street", return structured + citation
-- [ ] **WebSocket UI update**: backend emits `skill_result`, frontend
-  Zustand store updates, one dashboard section rerenders
+- [ ] **Audio in**: browser mic → FastAPI WebSocket → ElevenLabs Scribe →
+  printed transcript in server logs
+- [ ] **Audio out**: hardcoded text → ElevenLabs TTS websocket → browser
+  audio playback
+- [ ] **NemoClaw call**: send a hardcoded transcript to NemoClaw, stream
+  back at least one `text_delta` and one `skill_result`
+- [ ] **WebSocket UI update**: backend emits a fake `skill_result`,
+  frontend Zustand store updates, one dashboard section rerenders
+- [ ] **Interrupt**: clicking a "stop" button on the browser cancels an
+  in-flight TTS stream cleanly
 
 If all five pass, you're 80% de-risked.
 
 ### Phase 1 — Flora end-to-end (hours 2–10)
 
-- [ ] NemoClaw skeleton: persona router, system prompts, skill registry
-- [ ] Flora persona implemented with: `update_profile`, `mark_assumption`,
-  `score_clarity`, `handoff_to_finn`
-- [ ] Full audio loop with interrupt handling
-- [ ] Intake screen's typewriter wired to real partial transcript
-- [ ] Founder profile sidebar populates from `update_profile` calls
-- [ ] Conversation history persists to Redis per session
+- [ ] FastAPI gateway with `WebSocket /ws/session/{id}` endpoint
+- [ ] `NemoClawClient` class implemented against the confirmed protocol
+- [ ] Pydantic event schemas in a shared module
+- [ ] Full audio loop: mic → STT → NemoClaw → TTS → speaker
+- [ ] Interrupt handling proven with rapid-fire user speech
+- [ ] Intake screen's typewriter wired to real `text_delta` stream
+- [ ] Founder profile sidebar populated by `update_profile` skill results
+- [ ] Conversation history persisted to Redis per session
 
 ### Phase 2 — Finn's research workflow (hours 10–24)
 
-- [ ] All 6 essential skills implemented (Workplace Zones, Census, Business
-  Demography, High Streets, TfL, GLA Funding)
-- [ ] Composite skills: `score_location`, `generate_launch_plan`
-- [ ] Each skill result wired to its dashboard section via WebSocket events
-- [ ] Agent Workspace timeline = live trace of skill calls
-- [ ] Voice handoff Flora → Finn works without breaking audio continuity
+- [ ] All 6 essential skills working inside NemoClaw with real London
+  Datastore queries (this work happens in the NemoClaw repo, not here)
+- [ ] Composite skills (`score_location`, `generate_launch_plan`) returning
+  full structured outputs with citations
+- [ ] Each `skill_result` event in the backend is forwarded to the browser
+  with no transformation
+- [ ] Dashboard sections render from live skill data
+- [ ] Agent Workspace timeline = live trace of `skill_invoked` +
+  `skill_result` events
 
 ### Phase 3 — Dashboard voice refinement (hours 24–32)
 
-- [ ] Router: "Flora, X" / "Finn, Y" / generic intent classifier
-- [ ] Partial re-runs (e.g. just `score_location` when adding a new area)
+- [ ] Voice on dashboard pages works (FAB triggers a new turn)
+- [ ] NemoClaw routes "Flora, X" / "Finn, Y" / generic intents correctly
+- [ ] Partial re-runs work (e.g. just `score_location` when adding a new area)
 - [ ] Live "Your plan, updating" modal — real backend events, not scripted
 - [ ] Suggestion chips fire real flows when clicked
 
 ### Phase 4 — Polish & demo prep (hours 32–end)
 
-- [ ] One drilled "happy path" demo (the halal lunch scenario, end-to-end)
-- [ ] Pre-warmed data cache so first query is instant
-- [ ] Recording fallback: browser TTS + scripted text in case the live
-  API fails on stage
+- [ ] One drilled "happy path" demo (halal lunch scenario, end-to-end)
+- [ ] Backend health check + reconnect on transient failures
+- [ ] Recording fallback: browser TTS + scripted text in case ElevenLabs
+  fails on stage
 - [ ] One stretch path: judge gives a different idea, see how it handles
   (only if Phase 3 is fully done)
 
 ---
 
-## 9. Cut list — do NOT build
-
-- Auth, accounts, user management
-- Persistence beyond the active session
-- Real OAuth to GLA, Companies House, or any provider
-- Mobile responsive — desktop demo only
-- Generated PDF / pitch deck exports — keep buttons as mocked
-- More than the halal lunch demo scenario (unless time permits)
-- More than 1 founder profile in memory at a time
-- Live Datastore CKAN queries — use baked cache
-- Voice languages other than English
-
----
-
-## 10. Top risks
-
-| Risk | Mitigation |
-|---|---|
-| Nemotron tool-call drift vs Claude/GPT-4 schemas | Validate every tool call against JSON schema. Retry with stricter system prompt + 1-shot example. Fall back to a guarded reprompt if invalid. |
-| ElevenLabs interrupt handling races | Track `tts_request_id` per turn. On any new STT activity, cancel previous TTS server-side + send `flush_audio` to browser. Test with rapid-fire interruptions before demo. |
-| NemoClaw persona handoff feels broken on voice | Keep voice stream continuous — Flora literally says "let me hand you to Finn" while the system prompt swaps mid-stream. Optionally swap voice ID at the handoff word boundary. |
-| Dataset query latency on first request | Pre-build SQLite/DuckDB indices in CI. Warm the connection at session start. Never query raw CSVs at runtime. |
-| Skill ↔ dashboard contract drift | Shared Zod schemas between backend and frontend (`packages/contracts` or generate types from the skill registry). Break the build if shapes diverge. |
-| Demo network failure | Cache all skill outputs from the rehearsal run. Have a "replay last session" toggle that runs the demo with zero network calls. |
-
----
-
 ## 11. Open decisions
 
-Before scaffolding, confirm:
+These need to be answered before scaffolding the `NemoClawClient`:
 
-1. **NemoClaw provenance** — is this a tool you've already built, an existing
-   NVIDIA orchestration product you're using, or building from scratch this
-   hackathon? Affects whether the skill-registry pattern below needs to be
-   written or assumes one exists.
-2. **Voice IDs** — separate ElevenLabs voice for Flora vs Finn? Strongly
+1. **NemoClaw transport** — does it expose HTTP+SSE, raw WebSocket, gRPC,
+   or a Python SDK? Affects `httpx` vs `websockets` vs `grpcio` choice.
+2. **Auth** — API key (header), OAuth, mTLS, or session token? Affects
+   client initialisation.
+3. **Streaming format** — JSON lines, SSE `data:` frames, or protobuf?
+   Affects the parser in `stream_events()`.
+4. **Skill catalog discovery** — static (known at session start) or dynamic
+   (advertised in the response)? Affects validation strategy.
+5. **Citations** — does NemoClaw include London Datastore slugs in skill
+   outputs natively, or does the backend need to enrich from a local
+   `skill_name → dataset_slug` map?
+6. **Voice IDs** — separate ElevenLabs voice for Flora vs Finn? Strongly
    recommended; the personality differentiation is the product.
-3. **Nemotron hosting** — NVIDIA NIM hosted, OpenRouter, or self-hosted on
-   GPU? Affects latency budget and cost model.
-4. **Whether to deploy backend** for the demo or run it locally during the
-   pitch. Local is more reliable but a deployed URL impresses judges.
-5. **Session persistence** — do we want a founder to come back and continue,
+7. **Session persistence** — do we want a founder to come back and continue,
    or is "fresh session every time" fine for hackathon?
 
 ---
@@ -396,50 +486,65 @@ Before scaffolding, confirm:
 ## 12. Repository structure (proposed)
 
 Current state is frontend-only. Recommend converting to a monorepo as you
-add the backend:
+add the FastAPI backend:
 
 ```
 horizon/
   apps/
-    web/                        # current Vite app
+    web/                              # current Vite app
       src/
         App.jsx
-        store/                  # NEW — Zustand slices
+        store/                        # NEW — Zustand slices
         lib/
-          socket.js             # NEW — WebSocket client
-          audio.js              # NEW — mic + playback
+          socket.js                   # NEW — WebSocket client
+          audio.js                    # NEW — mic + playback
         pages/
         components/
-    gateway/                    # NEW — backend
-      src/
-        index.ts                # Hono + ws entrypoint
-        nemoclaw/               # orchestrator
-          personas/
-            flora.ts
-            finn.ts
-          router.ts
-        skills/                 # skill implementations
-          workplace_zone_density.ts
-          census_religion_share.ts
-          ...
-        adapters/
-          elevenlabs_stt.ts
-          elevenlabs_tts.ts
-          nemotron.ts
-        data/
-          bake.ts               # ETL
-          normalised/           # checked-in SQLite
       package.json
-  packages/
-    contracts/                  # shared schemas (Zod)
+      vite.config.js
+
+    gateway/                          # NEW — FastAPI backend (Python)
+      pyproject.toml
+      uv.lock                         # or requirements.txt
       src/
-        skills.ts
-        events.ts
-  pnpm-workspace.yaml           # or npm workspaces
+        finn_flora_gateway/
+          __init__.py
+          main.py                     # FastAPI app + uvicorn entrypoint
+          ws.py                       # WebSocket endpoint
+          coordinator.py              # asyncio task graph
+          nemoclaw/
+            __init__.py
+            client.py                 # NemoClawClient (HTTP+SSE or WS)
+            schemas.py                # Pydantic models (Session, Turn, Events)
+          adapters/
+            elevenlabs_stt.py
+            elevenlabs_tts.py
+          sessions/
+            __init__.py
+            store.py                  # Redis-backed session state
+            models.py                 # SessionState, Transcript, ProfileDraft
+          config.py                   # env-driven settings
+          logging.py                  # structlog setup
+      tests/
+        test_coordinator.py
+        test_nemoclaw_client.py
+
+  packages/
+    contracts/                        # NEW — shared event schemas
+      src/
+        events.py                     # Pydantic models (Python)
+        events.ts                     # mirrored TypeScript (or generated)
+      package.json
+
+  .github/workflows/
+    deploy-web.yml                    # existing → GitHub Pages
+    deploy-gateway.yml                # NEW → Fly.io / Railway
 ```
 
-Keep the GitHub Pages deployment for `apps/web` — backend deploys
-separately to Fly.io. Frontend connects to backend URL via env var.
+The frontend continues to deploy to GitHub Pages. The FastAPI backend
+deploys separately (Fly.io recommended — persistent WS support, free tier
+generous enough for demo). Frontend connects to backend URL via
+`VITE_GATEWAY_URL` env var.
 
 ---
 
@@ -448,19 +553,34 @@ separately to Fly.io. Frontend connects to backend URL via env var.
 **Must ship for a credible demo:**
 
 - Real voice conversation with Flora (audio in + out, interrupt handling)
-- 6 working Finn skills against real London Datastore data
-- Live dashboard updates from skill outputs
+- 6 working skills inside NemoClaw against real London Datastore data
+- Live dashboard updates driven by NemoClaw `skill_result` events
 - One end-to-end demo scenario that survives a judge's "what if I change X?"
 
 **Nice to have if ahead of schedule:**
 
-- Real Mapbox heatmap of Workplace Zones
-- Companies House API for live competitor analysis
+- Real Mapbox heatmap using Workplace Zones GeoJSON
+- Live competitor data (e.g. via web search inside a NemoClaw skill)
 - Second demo scenario (different industry / area)
 - Voice ID swap at persona handoff
 
 **Hard cuts:**
 
 - Anything outside London
-- Anything requiring user accounts
-- Anything that requires more than 1 founder session in memory
+- Auth, accounts, multi-user
+- Persistence beyond a single session
+- Mobile responsive (desktop demo only)
+- PDF / pitch deck exports — keep buttons as mocked
+
+---
+
+## 14. Top risks
+
+| Risk | Mitigation |
+|---|---|
+| NemoClaw protocol unknowns block backend scaffolding | Answer §11 open decisions before starting Phase 1. If transport is unclear, stub the `NemoClawClient` with a fake event stream so backend dev can proceed in parallel. |
+| Nemotron tool-call drift inside NemoClaw | Out of backend scope — handled inside the NemoClaw runtime. Backend validates incoming events against Pydantic schemas defensively. |
+| ElevenLabs interrupt handling races | Track `turn_id` per turn. On any new STT activity, cancel previous turn server-side and send `flush_audio` to browser. Test with rapid-fire interruptions before demo. |
+| Persona handoff feels broken on voice | Keep voice stream continuous — Flora literally says "let me hand you to Finn" while NemoClaw swaps persona mid-stream. Optionally swap voice ID at the handoff word boundary. |
+| Citation drift between skills and frontend | Either: (a) NemoClaw includes citations natively in skill results (preferred), or (b) backend maintains a `skill_name → dataset_slug` enrichment table. Either way: Pydantic validation enforces the contract. |
+| Demo network failure | Cache the last successful skill_result stream from rehearsal. Backend has a "replay last session" mode that runs the demo with zero network calls. |

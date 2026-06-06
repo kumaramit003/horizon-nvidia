@@ -5,7 +5,7 @@ import {
 } from 'lucide-react'
 import { Card, SectionHeader, Confidence, Tag, Progress, MiniActions, VoiceCommandBlock, AskWhyButton } from '../components/ui'
 
-const clarityRows = [
+const DEFAULT_CLARITY = [
   { label: 'Customer clarity',    value: 88, level: 'High'   },
   { label: 'Problem clarity',     value: 64, level: 'Medium' },
   { label: 'Revenue model',       value: 82, level: 'High'   },
@@ -15,21 +15,30 @@ const clarityRows = [
   { label: 'Risk clarity',        value: 60, level: 'Medium' },
 ]
 
-const assumptions = [
+const DEFAULT_ASSUMPTIONS = [
   { text: "You're targeting weekday office demand.",                  tag: 'Opportunity', tone: 'mint' },
   { text: 'Corporate catering is the safer first move, not a shop.', tag: 'Recommended', tone: 'peach' },
   { text: 'Liverpool Street works because of office density.',       tag: 'Opportunity', tone: 'sky' },
   { text: "There's a lot of competition — defensibility matters.",   tag: 'Risk',        tone: 'rose' },
 ]
 
-const openQuestions = [
+const DEFAULT_QUESTIONS = [
   'What is your starting budget?',
   'Pop-ups or delivery first?',
   'What price per meal are you considering?',
   'Suppliers or kitchen access already lined up?',
 ]
 
-export default function IdeaProfile() {
+export default function IdeaProfile({ dashboard }) {
+  const idea = dashboard?.idea || {}
+  const clarityRows = idea.clarity_rows?.length ? idea.clarity_rows : DEFAULT_CLARITY
+  const assumptions = idea.assumptions?.length ? idea.assumptions : DEFAULT_ASSUMPTIONS
+  const openQuestions = idea.open_questions?.length ? idea.open_questions : DEFAULT_QUESTIONS
+  const clarityScore = idea.clarity_score || 78
+  const floraNote = idea.flora_note || "It's a real personal pain in a high-density office patch — that's a strong starting point. The risk isn't whether people want lunch. It's whether they'll keep choosing you over the place next door."
+  const title = idea.title || 'Halal Healthy Lunch & Catering'
+  const description = idea.description || 'Flora captured the idea; Finn suggests starting with B2B pre-orders and a pop-up before signing any lease.'
+
   return (
     <div className="space-y-10">
       {/* Hero */}
@@ -44,17 +53,19 @@ export default function IdeaProfile() {
                 <Tag kind="Missing Info">Funding plan</Tag>
               </div>
               <h2 className="mt-5 display text-[44px] leading-[1.05] text-ink-900">
-                Halal Healthy Lunch <span className="italic-accent text-peach-500">&amp;</span> Catering
+                {title.includes('&') ? (
+                  <>{title.split('&')[0]}<span className="italic-accent text-peach-500">&amp;</span>{title.split('&')[1]}</>
+                ) : title}
               </h2>
               <p className="mt-3 max-w-[60ch] text-[16px] leading-relaxed text-ink-500">
-                A halal, health-focused lunch and corporate catering service for office workers around <span className="text-forest-500">Liverpool Street</span>. Flora captured the idea; Finn suggests starting with B2B pre-orders and a pop-up before signing any lease.
+                {idea.subtitle || 'A halal, health-focused lunch and corporate catering service for office workers around'} <span className="text-forest-500">Liverpool Street</span>. {description}
               </p>
 
               <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-                <Field icon={Briefcase} label="Business type" value="Food · B2B Catering" />
-                <Field icon={Sprout}    label="Stage"         value="Idea" />
-                <Field icon={MapPin}    label="Physical site" value="Maybe — pop-up first" />
-                <Field icon={PoundSterling} label="Revenue"   value="Catering · Subs · Pop-ups" />
+                <Field icon={Briefcase} label="Business type" value={idea.business_type || "Food · B2B Catering"} />
+                <Field icon={Sprout}    label="Stage"         value={idea.stage || "Idea"} />
+                <Field icon={MapPin}    label="Physical site" value={idea.physical_site || "Maybe — pop-up first"} />
+                <Field icon={PoundSterling} label="Revenue"   value={idea.revenue || "Catering · Subs · Pop-ups"} />
               </div>
             </div>
           </Card>
@@ -65,14 +76,14 @@ export default function IdeaProfile() {
             <div className="relative">
               <div className="section-eyebrow">Founder clarity</div>
               <div className="mt-2 flex items-end gap-2">
-                <span className="display text-[72px] leading-none text-ink-900">78</span>
+                <span className="display text-[72px] leading-none text-ink-900">{clarityScore}</span>
                 <span className="mb-2 text-[15px] text-ink-500">/ 100</span>
                 <span className="mb-2 ml-auto pill bg-mint-100 border-mint-200">↑ 12 since intake</span>
               </div>
               <p className="mt-3 text-[13.5px] text-ink-500">You're clearer than 64% of founders at this stage.</p>
               <div className="mt-5 grid grid-cols-9 gap-0.5">
                 {Array.from({ length: 27 }).map((_, i) => {
-                  const filled = i < Math.round((78 / 100) * 27)
+                  const filled = i < Math.round((clarityScore / 100) * 27)
                   return <span key={i} className={`h-6 rounded-sm ${filled ? 'bg-peach-500' : 'bg-cream-200'}`} />
                 })}
               </div>
@@ -91,7 +102,7 @@ export default function IdeaProfile() {
           <div className="flex-1">
             <div className="section-eyebrow mb-1.5">Flora's read on the idea</div>
             <p className="display text-[22px] leading-snug text-forest-500">
-              "It's a real personal pain in a high-density office patch — that's a strong starting point. The risk isn't whether people want lunch. It's whether <span className="italic-accent text-sage-500">they'll keep choosing you over the place next door.</span>"
+              "{floraNote.split('—')[0]}— <span className="italic-accent text-sage-500">{floraNote.split('—').slice(1).join('—') || floraNote}</span>"
             </p>
           </div>
           <AskWhyButton>What changed?</AskWhyButton>

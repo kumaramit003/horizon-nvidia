@@ -26,16 +26,20 @@ const MOTIVATIONAL = [
   "You're closer than you think.",
   "Finn's listening in the background — already crunching the numbers.",
 ]
+import React, { useEffect, useState, useRef } from 'react'
+import { Send, ArrowRight, Database, ExternalLink, Leaf } from 'lucide-react'
+import { Wordmark, LeafMark, Tagline } from '../components/Brand'
+import { api } from '../lib/api'
 
 function Orb({ state, who = 'flora' }) {
   const grad = who === 'flora' ? 'gradient-orb-flora' : 'gradient-orb-finn'
   return (
-    <div className="relative grid place-items-center" style={{ width: 280, height: 280 }}>
+    <div className="relative grid place-items-center" style={{ width: 200, height: 200 }}>
       <span className={`absolute inset-0 rounded-full ${grad} opacity-20 blur-3xl animate-breathe`} />
-      <span className={`absolute inset-6 rounded-full ${grad} opacity-40 blur-2xl animate-breathe`} style={{ animationDelay: '500ms' }} />
-      <span className={`absolute inset-12 rounded-full ${grad} opacity-95 blur-[1px] animate-breathe`} style={{ animationDelay: '200ms' }} />
-      <span className={`absolute inset-16 rounded-full ${grad} shadow-[inset_0_8px_30px_rgba(255,255,255,0.45),inset_0_-30px_50px_rgba(27,47,28,0.35)]`} />
-      <span className="absolute inset-[88px] rounded-full bg-white/30 backdrop-blur-sm" />
+      <span className={`absolute inset-4 rounded-full ${grad} opacity-40 blur-2xl animate-breathe`} style={{ animationDelay: '500ms' }} />
+      <span className={`absolute inset-8 rounded-full ${grad} opacity-95 blur-[1px] animate-breathe`} style={{ animationDelay: '200ms' }} />
+      <span className={`absolute inset-12 rounded-full ${grad} shadow-[inset_0_8px_30px_rgba(255,255,255,0.45),inset_0_-30px_50px_rgba(27,47,28,0.35)]`} />
+      <span className="absolute inset-[60px] rounded-full bg-white/30 backdrop-blur-sm" />
 
       {state !== 'idle' && (
         <>
@@ -45,32 +49,40 @@ function Orb({ state, who = 'flora' }) {
       )}
 
       <div className="relative flex flex-col items-center text-white">
-        <LeafMark size={28} className="opacity-95 drop-shadow" />
-        <div className="mt-2 text-[10.5px] font-medium uppercase tracking-[0.22em] text-white/90">
-          {state === 'listening' ? 'Listening' :
-           state === 'thinking'  ? (who === 'flora' ? 'Flora' : 'Finn') :
-           state === 'speaking'  ? (who === 'flora' ? 'Flora speaking' : 'Finn speaking') :
-                                   'Tap to begin'}
+        <LeafMark size={20} className="opacity-95 drop-shadow" />
+        <div className="mt-1.5 text-[9.5px] font-medium uppercase tracking-[0.22em] text-white/90">
+          {state === 'thinking' ? (who === 'flora' ? 'Flora thinking' : 'Finn working') :
+           state === 'speaking' ? 'Flora speaking' :
+           state === 'waiting'  ? 'Your turn' : 'Flora'}
         </div>
       </div>
     </div>
   )
 }
 
-function Waveform({ active }) {
+function GatheredPips({ gathered }) {
+  const fields = [
+    { key: 'idea', label: 'Idea' },
+    { key: 'motivation', label: 'Why' },
+    { key: 'customer', label: 'Customer' },
+    { key: 'first_version', label: 'Format' },
+    { key: 'budget', label: 'Budget' },
+    { key: 'location', label: 'Location' },
+  ]
+  const done = fields.filter(f => gathered?.[f.key]).length
   return (
-    <div className="flex h-6 items-end gap-[3px]">
-      {Array.from({ length: 22 }).map((_, i) => (
-        <span
-          key={i}
-          className={`w-[3px] rounded-full bg-sage-400 ${active ? 'animate-wave' : 'opacity-30'}`}
-          style={{
-            height: `${28 + ((i * 19) % 60)}%`,
-            animationDelay: `${(i % 11) * 70}ms`,
-            animationDuration: `${800 + (i % 5) * 120}ms`,
-          }}
-        />
+    <div className="flex items-center gap-2">
+      {fields.map(f => (
+        <div key={f.key} className="flex flex-col items-center gap-1">
+          <span className={`h-2 w-2 rounded-full transition-all duration-500 ${
+            gathered?.[f.key] ? 'bg-sage-500 scale-125' : 'bg-ink-200'
+          }`} />
+          <span className={`text-[9px] font-medium uppercase tracking-wider transition-colors ${
+            gathered?.[f.key] ? 'text-sage-600' : 'text-ink-300'
+          }`}>{f.label}</span>
+        </div>
       ))}
+      <span className="ml-3 text-[11px] font-mono text-ink-400">{done}/6</span>
     </div>
   )
 }
@@ -84,7 +96,38 @@ export default function Intake({ onComplete }) {
   const [analysisDone, setAnalysisDone] = useState(false)
   const [voiceError, setVoiceError] = useState('')
   const spokenTurnRef = useRef(null)
+  const [conversation, setConversation] = useState([])
+  const [floraMessage, setFloraMessage] = useState('')
+  const [floraTyped, setFloraTyped] = useState('')
+  const [floraTyping, setFloraTyping] = useState(false)
+  const [floraThinking, setFloraThinking] = useState(true)
+  const [gathered, setGathered] = useState({})
+  const [userInput, setUserInput] = useState('')
+  const [analysing, setAnalysing] = useState(false)
+  const [pipelineDone, setPipelineDone] = useState(false)
+  const [error, setError] = useState(null)
+  const [turnCount, setTurnCount] = useState(0)
+  const inputRef = useRef(null)
+  const chatEndRef = useRef(null)
 
+  // On mount, get Flora's opening message
+  useEffect(() => {
+    let cancelled = false
+    setFloraThinking(true)
+    api.floraChat([])
+      .then(res => {
+        if (cancelled) return
+        setFloraMessage(res.message)
+        setGathered(res.gathered || {})
+        setFloraThinking(false)
+      })
+      .catch(err => {
+        if (!cancelled) setError(err.message)
+      })
+    return () => { cancelled = true }
+  }, [])
+
+  // Typewriter effect when Flora has a new message
   useEffect(() => {
     if (!started) return
     if (turn >= CONVERSATION.length) return
@@ -113,22 +156,17 @@ export default function Intake({ onComplete }) {
 
     setOrbState(msg.speaker === 'flora' ? 'speaking' : 'listening')
     setTyped('')
+    if (!floraMessage || floraThinking) return
+    setFloraTyping(true)
+    setFloraTyped('')
     let i = 0
-    const speed = msg.speaker === 'flora' ? 26 : 20
     const interval = setInterval(() => {
       i++
-      setTyped(msg.text.slice(0, i))
-      if (i >= msg.text.length) {
+      setFloraTyped(floraMessage.slice(0, i))
+      if (i >= floraMessage.length) {
         clearInterval(interval)
-        setTimeout(() => {
-          if (turn < CONVERSATION.length - 1) {
-            setOrbState('thinking')
-            setTimeout(() => setTurn(t => t + 1), 550)
-          } else {
-            setAnalysing(true)
-            setOrbState('thinking')
-          }
-        }, msg.speaker === 'flora' ? 700 : 800)
+        setFloraTyping(false)
+        setTimeout(() => inputRef.current?.focus(), 100)
       }
     }, speed)
     return () => {
@@ -138,17 +176,81 @@ export default function Intake({ onComplete }) {
       if (audioUrl) URL.revokeObjectURL(audioUrl)
     }
   }, [started, turn])
+    }, 20)
+    return () => clearInterval(interval)
+  }, [floraMessage, floraThinking])
 
+  // Scroll chat history when it updates
   useEffect(() => {
-    if (!analysing) return
-    const t = setTimeout(() => setAnalysisDone(true), 5200)
-    return () => clearTimeout(t)
-  }, [analysing])
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [conversation])
 
-  const currentMessage = CONVERSATION[turn]
-  const completion = Math.min(100, Math.round(((turn + 1) / CONVERSATION.length) * 100))
-  const motivational = MOTIVATIONAL[Math.min(turn, MOTIVATIONAL.length - 1)]
-  const orbWho = analysing ? 'finn' : 'flora'
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!userInput.trim() || floraTyping || floraThinking) return
+
+    const answer = userInput.trim()
+    setUserInput('')
+
+    const updated = [
+      ...conversation,
+      { speaker: 'flora', text: floraMessage },
+      { speaker: 'you', text: answer },
+    ]
+    setConversation(updated)
+    setTurnCount(t => t + 1)
+
+    // Ask Flora for next question
+    setFloraThinking(true)
+    try {
+      const res = await api.floraChat(updated)
+      setGathered(res.gathered || {})
+
+      if (res.done) {
+        // Flora is done — add her handoff message and start the pipeline
+        const finalConvo = [
+          ...updated,
+          { speaker: 'flora', text: res.message },
+        ]
+        setConversation(finalConvo)
+        setFloraMessage(res.message)
+        setFloraThinking(false)
+
+        // Small delay for the handoff message to display, then start pipeline
+        setTimeout(() => {
+          setAnalysing(true)
+          onComplete(finalConvo)
+            .then(() => setPipelineDone(true))
+            .catch(err => setError(err.message || 'Pipeline failed'))
+        }, 2500)
+      } else {
+        setFloraMessage(res.message)
+        setFloraThinking(false)
+      }
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-mesh">
+        <div className="text-center max-w-lg px-6">
+          <div className="grid h-16 w-16 mx-auto place-items-center rounded-3xl bg-rose-100">
+            <span className="text-rose-500 text-2xl">!</span>
+          </div>
+          <h2 className="mt-6 display text-[28px] text-ink-900">Something went wrong</h2>
+          <p className="mt-3 text-[14px] text-ink-500 leading-relaxed">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-8 inline-flex items-center gap-2 rounded-full bg-forest-500 px-6 py-3 text-[14px] font-medium text-cream-50 shadow-lift hover:bg-forest-600"
+          >
+            Start over <ArrowRight size={14} />
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-mesh">
@@ -159,12 +261,7 @@ export default function Intake({ onComplete }) {
 
       <header className="relative z-10 mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-3 px-8 pt-8">
         <Wordmark size="lg" />
-        <a
-          href="https://data.london.gov.uk/dataset/"
-          target="_blank"
-          rel="noreferrer"
-          className="pill bg-white hover:bg-cream-50"
-        >
+        <a href="https://data.london.gov.uk/dataset/" target="_blank" rel="noreferrer" className="pill bg-white hover:bg-cream-50">
           <Database size={11} className="text-sage-500" /> Powered by London Datastore <ExternalLink size={10} />
         </a>
       </header>
@@ -173,57 +270,58 @@ export default function Intake({ onComplete }) {
         {!started ? (
           <StartVoice onStart={() => setStarted(true)} />
         ) : !analysisDone ? (
+      <main className="relative z-10 mx-auto flex min-h-[calc(100vh-90px)] max-w-[760px] flex-col items-center justify-center px-6 pb-16 pt-6">
+        {pipelineDone ? (
+          <Ready />
+        ) : analysing ? (
           <>
-            <div key={turn} className="mb-7 text-[12.5px] font-medium uppercase tracking-[0.22em] text-sage-500 animate-[fadeIn_1s_ease]">
-              {motivational}
+            <Orb state="thinking" who="finn" />
+            <div className="mt-5 text-[11.5px] font-medium uppercase tracking-[0.18em] text-ink-500">
+              Flora & Finn are building your plan
+            </div>
+            <div className="mt-8 max-w-[640px]"><Analysing /></div>
+          </>
+        ) : (
+          <>
+            <Orb
+              state={floraThinking ? 'thinking' : floraTyping ? 'speaking' : 'waiting'}
+              who="flora"
+            />
+
+            <div className="mt-4 text-[11px] font-medium uppercase tracking-[0.18em] text-ink-500">
+              {floraThinking ? 'Flora is thinking...' : floraTyping ? 'Flora is speaking' : 'Your turn · type below'}
             </div>
 
-            <Orb state={analysing ? 'thinking' : orbState} who={orbWho} />
-
-            <div className="mt-7 flex h-7 items-center gap-3">
-              <Waveform active={orbState === 'listening' && !analysing} />
-              <span className="text-[11.5px] font-medium uppercase tracking-[0.18em] text-ink-500">
-                {analysing
-                  ? 'Finn is researching · reading London'
-                  : orbState === 'listening' ? 'You · just speak'
-                  : orbState === 'speaking'  ? 'Flora is speaking'
-                  :                            'Flora is discovering'}
-              </span>
+            {/* Gathered context pips */}
+            <div className="mt-4">
+              <GatheredPips gathered={gathered} />
             </div>
 
-            <div className="mt-10 max-w-[640px]">
-              {!analysing ? (
-                <>
-                  <div className="text-[10.5px] font-medium uppercase tracking-[0.22em] text-ink-400">
-                    {currentMessage?.speaker === 'you' ? 'You' : 'Flora'}
+            {/* Chat history */}
+            {conversation.length > 0 && (
+              <div className="mt-5 w-full max-w-[600px] max-h-[180px] overflow-y-auto rounded-2xl bg-white/60 backdrop-blur border border-black/[0.05] px-5 py-4 space-y-3">
+                {conversation.map((msg, i) => (
+                  <div key={i} className={`text-[13px] ${msg.speaker === 'flora' ? 'text-sage-600' : 'text-ink-900'}`}>
+                    <span className="font-semibold text-[10px] uppercase tracking-wider">
+                      {msg.speaker === 'flora' ? 'Flora' : 'You'}
+                    </span>
+                    <p className="mt-0.5">{msg.text}</p>
                   </div>
-                  <p className="mt-3 display text-[32px] leading-[1.18] text-forest-500">
-                    {typed}
-                    <span className="ml-0.5 inline-block h-6 w-[2px] animate-cursor bg-sage-500 align-middle" />
-                  </p>
-                </>
-              ) : (
-                <Analysing />
-              )}
-            </div>
+                ))}
+                <div ref={chatEndRef} />
+              </div>
+            )}
 
-            {!analysing && (
-              <>
-                <div className="mt-12 flex items-center gap-1.5">
-                  {CONVERSATION.map((_, i) => (
-                    <span
-                      key={i}
-                      className={`h-1.5 rounded-full transition-all duration-500 ${
-                        i < turn ? 'w-6 bg-sage-500' :
-                        i === turn ? 'w-8 bg-sage-400' :
-                        'w-1.5 bg-ink-200'
-                      }`}
-                    />
-                  ))}
-                </div>
-                <div className="mt-2 text-[11.5px] font-mono text-ink-400">
-                  {completion}% Idea profile building
-                </div>
+            {/* Flora's current message */}
+            {!floraThinking && (
+              <div className="mt-5 max-w-[600px] w-full text-center animate-[fadeIn_0.4s_ease]">
+                <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-sage-500 mb-2">Flora</div>
+                <p className="display text-[24px] leading-[1.25] text-forest-500">
+                  {floraTyped}
+                  {floraTyping && <span className="ml-0.5 inline-block h-5 w-[2px] animate-cursor bg-sage-500 align-middle" />}
+                </p>
+              </div>
+            )}
 
                 {voiceError && (
                   <div className="mt-4 rounded-full border border-butter-200 bg-butter-100 px-4 py-2 text-[12px] text-ink-700">
@@ -236,13 +334,45 @@ export default function Intake({ onComplete }) {
                   <button className="btn-ghost text-[12.5px]"><CornerDownLeft size={12} /> Type instead</button>
                   <button className="btn-ghost text-[12.5px]"><MicOff size={12} /> Mute</button>
                 </div>
-
-                <Tagline className="mt-10 opacity-80" block />
-              </>
+            {floraThinking && (
+              <div className="mt-8 flex items-center gap-2 text-[13px] text-ink-400">
+                <span className="inline-flex gap-1">
+                  <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" />
+                  <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '150ms' }} />
+                  <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '300ms' }} />
+                </span>
+              </div>
             )}
+
+            {/* User input */}
+            {!floraTyping && !floraThinking && !analysing && (
+              <form onSubmit={handleSubmit} className="mt-6 w-full max-w-[560px] animate-[fadeIn_0.4s_ease]">
+                <div className="flex items-center gap-3 rounded-2xl border border-sage-200 bg-white px-5 py-3 shadow-soft focus-within:border-sage-400 focus-within:ring-2 focus-within:ring-sage-200 transition-all">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={userInput}
+                    onChange={(e) => setUserInput(e.target.value)}
+                    placeholder="Type your answer..."
+                    className="flex-1 bg-transparent text-[15px] text-ink-900 placeholder:text-ink-300 outline-none"
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    disabled={!userInput.trim()}
+                    className="grid h-9 w-9 place-items-center rounded-xl bg-forest-500 text-white transition-all hover:bg-forest-600 disabled:opacity-30"
+                  >
+                    <Send size={14} />
+                  </button>
+                </div>
+                <div className="mt-2 text-center text-[11px] text-ink-400">
+                  Press Enter to send · Turn {turnCount + 1}
+                </div>
+              </form>
+            )}
+
+            <Tagline className="mt-8 opacity-80" block />
           </>
-        ) : (
-          <Ready onComplete={onComplete} />
         )}
       </main>
 
@@ -288,25 +418,26 @@ function StartVoice({ onStart }) {
 
 function Analysing() {
   const STEPS = [
-    'Flora handing your idea to Finn',
-    'Pulling Workplace Zone Statistics',
-    'Cross-referencing 2021 Census · Religion by Ward',
-    'Scanning London Business Demography',
-    'Reading TfL flows for Liverpool Street',
-    'Matching the GLA Funding Directory',
-    'Drafting your launch plan',
+    'Flora analysing your conversation',
+    'Building your idea profile & clarity score',
+    'Finn researching target audience',
+    'Validating market signals against London data',
+    'Comparing London locations',
+    'Estimating costs & matching grants',
+    'Drafting your 7-day launch plan',
   ]
   const [stage, setStage] = useState(0)
   useEffect(() => {
     if (stage >= STEPS.length - 1) return
-    const t = setTimeout(() => setStage(s => s + 1), 580)
+    const delay = stage === 0 ? 4000 : 5000
+    const t = setTimeout(() => setStage(s => s + 1), delay)
     return () => clearTimeout(t)
   }, [stage])
 
   return (
-    <div>
-      <p className="display text-[32px] leading-[1.2] text-forest-500">
-        Give me twelve seconds. <span className="italic-accent text-sage-500">Finn's reading London for you.</span>
+    <div className="text-center">
+      <p className="display text-[26px] leading-[1.2] text-forest-500">
+        Give me a moment. <span className="italic-accent text-sage-500">Flora & Finn are working for you.</span>
       </p>
       <ul className="mt-8 mx-auto max-w-[480px] space-y-2 text-left">
         {STEPS.map((s, i) => {
@@ -340,32 +471,21 @@ function Analysing() {
   )
 }
 
-function Ready({ onComplete }) {
+function Ready() {
   return (
-    <div className="relative mx-auto w-full max-w-[600px]">
+    <div className="relative mx-auto w-full max-w-[600px] text-center">
       <span aria-hidden className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-56 w-56 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
-      <div className="relative flex flex-col items-center text-center">
+      <div className="relative flex flex-col items-center">
         <div className="grid h-20 w-20 place-items-center rounded-3xl gradient-orb-finn shadow-lift">
           <Leaf size={30} className="text-white" />
         </div>
-
         <h1 className="mt-8 display text-[56px] leading-[1.04] tracking-tight text-forest-500">
           Your plan is <span className="italic-accent text-sage-500">ready.</span>
         </h1>
-
         <p className="mt-5 max-w-[520px] text-[16px] leading-relaxed text-ink-500">
-          Seven sections. Twelve London datasets. One page where you can finally <span className="text-forest-500">see the whole thing.</span>
+          Real London data. Real analysis. One dashboard where you can <span className="text-forest-500">see the whole thing.</span>
         </p>
-
-        <button
-          onClick={onComplete}
-          className="mt-10 inline-flex items-center gap-2 rounded-full bg-forest-500 px-7 py-3.5 text-[14.5px] font-medium text-cream-50 shadow-lift transition-all hover:scale-[1.02] hover:bg-forest-600"
-        >
-          See my plan <ArrowRight size={16} />
-        </button>
-
-        <div className="mt-3 text-[12px] text-ink-400">You can refine everything with voice from inside.</div>
-
+        <div className="mt-6 text-[12px] text-ink-400">Redirecting to your dashboard...</div>
         <Tagline block className="mt-12" />
       </div>
     </div>
