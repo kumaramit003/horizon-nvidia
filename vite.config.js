@@ -12,7 +12,9 @@ export default defineConfig({
       // Everything under /api goes to the FastAPI backend.
       // This includes /api/discoveries, /api/flora, /api/voice, /api/health.
       '/api': {
-        target: 'http://localhost:8000',
+        // Local dev backend runs on :8001 to avoid colliding with a NIM
+        // that may be running on :8000 on the same host.
+        target: 'http://localhost:8001',
         changeOrigin: true,
       },
     },

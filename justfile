@@ -18,9 +18,9 @@ db:
 db-stop:
     docker stop founderos-mongo
 
-# Start backend (FastAPI on :8000)
+# Start backend (FastAPI on :8001 — avoids NIM running on :8000)
 backend:
-    cd backend && MONGODB_URL=mongodb://localhost:27017 poetry run uvicorn app.main:app --reload --port 8000
+    cd backend && MONGODB_URL=mongodb://localhost:27017 poetry run uvicorn app.main:app --reload --port 8001
 
 # Start frontend (Vite on :5173)
 frontend:

@@ -13,8 +13,15 @@ services:
 
   backend:
     build: ./backend
+    # Host binding moved to 8001 so we don't collide with the NIM, which
+    # also listens on 8000. Inside the docker network the backend still
+    # uses port 8000 (that's what nginx in the frontend container proxies to).
     ports:
-      - "8000:8000"
+      - "8001:8000"
+    # Allow the backend container to reach a NIM running on the docker host
+    # (set NVIDIA_BASE_URL=http://host.docker.internal:8000/v1 in .env if so).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       # MongoDB
       - MONGODB_URL=mongodb://mongo:27017
