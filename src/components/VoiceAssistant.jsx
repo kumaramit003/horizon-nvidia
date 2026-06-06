@@ -65,14 +65,22 @@ export default function VoiceAssistant({ open, onClose, prefill, discoveryId, on
   const vadFrameRef = useRef(null)
   const micSupported = isRecordingSupported()
 
-  // Reset + smart-route any prefilled command.
+  // Reset + route any prefilled command. prefill = string | { text, agent, mode }.
   useEffect(() => {
     if (!open) return
     setPhase('idle'); setErrMsg(''); setAnswer(''); setMicLevel(0)
-    if (prefill) {
-      setText(prefill)
-      if (looksLikeQuestion(prefill)) { setAgent('finn'); setFinnMode('ask') }
-      else { setAgent('flora') }
+    const pf = (prefill && typeof prefill === 'object') ? prefill : (prefill ? { text: prefill } : null)
+    if (pf?.text) {
+      setText(pf.text)
+      if (pf.agent === 'flora') {
+        setAgent('flora')
+      } else if (pf.agent === 'finn') {
+        setAgent('finn'); setFinnMode(pf.mode || 'ask')
+      } else if (looksLikeQuestion(pf.text)) {
+        setAgent('finn'); setFinnMode('ask')
+      } else {
+        setAgent('flora')
+      }
     } else {
       setText(''); setAgent(null)
     }

@@ -103,13 +103,13 @@ export function MiniActions({ onAccept, onEdit, onChallenge }) {
   )
 }
 
-// Opens the "Change your plan" voice modal asking why something was
-// recommended. Pass a specific `question` for context.
-export function AskWhyButton({ children = 'Ask why', question = 'Why did you recommend this? Walk me through your reasoning.' }) {
+// Opens the assistant to ask why something was recommended. Defaults to Finn
+// (he explains his research); pass agent="flora" on idea-owned sections.
+export function AskWhyButton({ children = 'Ask why', question = 'Why did you recommend this? Walk me through your reasoning.', agent = 'finn', mode = 'ask' }) {
   return (
     <button
       className="btn-ghost !py-1 !px-2.5 text-[11.5px]"
-      onClick={() => window.dispatchEvent(new CustomEvent('voice-prefill', { detail: question }))}
+      onClick={() => openAssistant({ text: question, agent, mode })}
     >
       <HelpCircle size={12} /> {children}
     </button>
@@ -124,12 +124,16 @@ export function RegenerateButton() {
   )
 }
 
-export function VoiceCommandBlock({ commands, title = 'Try with your voice' }) {
-  const openWith = (cmd) => {
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('voice-prefill', { detail: cmd }))
-    }
+// Open the assistant pre-filled. detail = string | { text, agent, mode }.
+// agent: 'flora' | 'finn' — routes straight to the right advisor.
+export function openAssistant(detail) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('voice-prefill', { detail }))
   }
+}
+
+export function VoiceCommandBlock({ commands, title = 'Try with your voice', agent = 'finn', mode }) {
+  const openWith = (cmd) => openAssistant({ text: cmd, agent, mode })
   return (
     <div className="card relative overflow-hidden p-6">
       <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full gradient-soft-peach opacity-70 blur-2xl" />

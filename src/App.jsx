@@ -78,17 +78,18 @@ function AuthedApp({ user, onSignOut }) {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
         e.preventDefault()
-        setVoicePrefill('')
+        setVoicePrefill(null)
         setVoiceOpen(v => !v)
       }
     }
     window.addEventListener('keydown', onKey)
 
-    // Global event so any dashboard page (and the VoiceCommandBlock chips)
-    // can open the modal with a pre-filled command without prop drilling.
+    // Global event so any dashboard page can open the assistant pre-filled.
+    // detail may be a plain string or { text, agent, mode } for explicit routing.
     const onPrefill = (e) => {
-      const cmd = (e.detail || '').toString()
-      setVoicePrefill(cmd)
+      const d = e.detail
+      const detail = (d && typeof d === 'object') ? d : { text: (d || '').toString() }
+      setVoicePrefill(detail)
       setVoiceOpen(true)
     }
     window.addEventListener('voice-prefill', onPrefill)
@@ -250,7 +251,7 @@ function AuthedApp({ user, onSignOut }) {
         </div>
       </main>
 
-      <VoiceFab onClick={() => { setVoicePrefill(''); setVoiceOpen(true) }} />
+      <VoiceFab onClick={() => { setVoicePrefill(null); setVoiceOpen(true) }} />
       <VoiceAssistant
         open={voiceOpen}
         onClose={() => setVoiceOpen(false)}

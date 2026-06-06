@@ -38,9 +38,9 @@ export default function IdeaProfile({ dashboard, section }) {
   const description = idea.description || ''
   const subtitle = idea.subtitle || ''
 
-  // Open the "Change your plan" voice modal pre-filled with a command.
+  // The idea page is Flora's domain — route every action straight to her.
   const askFlora = (cmd) =>
-    window.dispatchEvent(new CustomEvent('voice-prefill', { detail: cmd }))
+    window.dispatchEvent(new CustomEvent('voice-prefill', { detail: { text: cmd, agent: 'flora' } }))
 
   return (
     <div className="space-y-10">
@@ -111,7 +111,7 @@ export default function IdeaProfile({ dashboard, section }) {
                   : floraNote}"
               </p>
             </div>
-            <AskWhyButton>What changed?</AskWhyButton>
+            <AskWhyButton agent="flora" question="Flora, what made you read my idea this way?">What changed?</AskWhyButton>
           </div>
         </Card>
       )}
@@ -122,7 +122,7 @@ export default function IdeaProfile({ dashboard, section }) {
           <SectionHeader
             eyebrow="Clarity breakdown"
             title="Where it's solid, where it isn't"
-            right={<AskWhyButton />}
+            right={<AskWhyButton agent="flora" question="Flora, why did you score my idea's clarity like this?" />}
           />
           <div className="space-y-4">
             {clarityRows.map(r => (
@@ -145,7 +145,7 @@ export default function IdeaProfile({ dashboard, section }) {
             eyebrow="Assumptions"
             title="What Flora is currently believing"
             description="Accept, edit or challenge. The plan updates."
-            right={<AskWhyButton />}
+            right={<AskWhyButton agent="flora" question="Flora, why are you making these assumptions about my idea?" />}
           />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {assumptions.map(a => (
@@ -200,11 +200,13 @@ export default function IdeaProfile({ dashboard, section }) {
         </Card>
 
         <VoiceCommandBlock
+          title="Tell Flora more about your idea"
+          agent="flora"
           commands={[
             'Make this more premium.',
             'Focus on B2B catering first.',
             'Assume I only have £5k.',
-            'Challenge my riskiest assumption.',
+            'Actually, my customer is different — let me explain.',
           ]}
         />
       </div>
