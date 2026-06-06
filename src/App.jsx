@@ -216,6 +216,25 @@ function AuthedApp({ user, onSignOut }) {
           onSignOut={onSignOut}
           workspaceName={dashboard?.idea?.title || ''}
         />
+        {(() => {
+          const updating = Object.values(sections || {}).filter(s => s === 'processing')
+          if (!updating.length) return null
+          const total = Object.keys(sections || {}).length || 7
+          const doneCount = total - updating.length
+          return (
+            <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-peach-200 bg-peach-50/90 px-9 py-2.5 backdrop-blur">
+              <span className="inline-flex gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-peach-500 animate-breathe" />
+                <span className="h-1.5 w-1.5 rounded-full bg-peach-500 animate-breathe" style={{ animationDelay: '150ms' }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-peach-500 animate-breathe" style={{ animationDelay: '300ms' }} />
+              </span>
+              <span className="text-[12.5px] font-medium text-peach-600">
+                Flora &amp; Finn are updating your plan — pages refresh as each part lands.
+              </span>
+              <span className="ml-auto font-mono text-[11.5px] text-peach-600">{doneCount}/{total}</span>
+            </div>
+          )
+        })()}
         <div className="flex-1 overflow-y-auto px-9 py-8">
           <PageComponent
             dashboard={dashboard}
