@@ -113,6 +113,14 @@ build:
 doctor:
     @./scripts/check-ports.sh
 
+# Show pipeline status: latest discovery docs + recent backend log lines.
+status:
+    @echo "→ Latest 3 discoveries in Mongo:"
+    @docker compose exec -T mongo mongosh --quiet founderos --eval 'db.discoveries.find({}, {workspace_name:1, status:1, updated_at:1}).sort({created_at:-1}).limit(3).toArray()' 2>/dev/null || echo "  (mongo not reachable)"
+    @echo ""
+    @echo "→ Recent backend pipeline lines:"
+    @docker compose logs backend --since 5m --no-log-prefix 2>/dev/null | grep -iE "pipeline|finn|flora|error" | tail -20 || echo "  (no recent activity)"
+
 # Smoke-test the running stack.
 check:
     @echo "→ /api/health"
