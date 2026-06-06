@@ -223,29 +223,36 @@ async def run_finn(idea_profile: dict, conversation: list[dict]) -> dict:
     logger.info("Finn running all research modules")
 
     import asyncio
-    audience_task = chat_json(SYSTEM_AUDIENCE, context, temperature=0.4)
-    validation_task = chat_json(SYSTEM_VALIDATION, context, temperature=0.4)
-    locations_task = chat_json(SYSTEM_LOCATIONS, context, temperature=0.4)
-    financials_task = chat_json(SYSTEM_FINANCIALS, context, temperature=0.4)
-    plan_task = chat_json(SYSTEM_PLAN, context, temperature=0.4)
-    agents_task = chat_json(SYSTEM_AGENTS, context, temperature=0.3)
+
+    MODULE_TIMEOUT = 150  # seconds — fail a single hung module instead of the whole run
+
+    async def _run_module(label, system, temp):
+        try:
+            result = await asyncio.wait_for(
+                chat_json(system, context, temperature=temp),
+                timeout=MODULE_TIMEOUT,
+            )
+            logger.info("Finn module '%s' OK (%d keys)", label, len(result))
+            return result
+        except asyncio.TimeoutError:
+            logger.error("Finn module '%s' TIMED OUT after %ss", label, MODULE_TIMEOUT)
+            return None
+        except Exception as e:
+            logger.error("Finn module '%s' FAILED: %s", label, e)
+            return None
 
     results = await asyncio.gather(
-        audience_task,
-        validation_task,
-        locations_task,
-        financials_task,
-        plan_task,
-        agents_task,
-        return_exceptions=True,
+        _run_module("audience",   SYSTEM_AUDIENCE,   0.4),
+        _run_module("validation", SYSTEM_VALIDATION, 0.4),
+        _run_module("locations",  SYSTEM_LOCATIONS,  0.4),
+        _run_module("financials", SYSTEM_FINANCIALS, 0.4),
+        _run_module("plan",       SYSTEM_PLAN,       0.4),
+        _run_module("agents",     SYSTEM_AGENTS,     0.3),
     )
 
     dashboard = {}
-    labels = ["audience", "validation", "locations", "financials", "plan", "agents"]
-    for label, result in zip(labels, results):
-        if isinstance(result, Exception):
-            logger.error("Finn module '%s' failed: %s", label, result)
-            continue
-        dashboard.update(result)
+    for result in results:
+        if result is not None:
+            dashboard.update(result)
 
     return dashboard
