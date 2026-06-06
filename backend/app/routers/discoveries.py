@@ -1,11 +1,13 @@
 from datetime import datetime
+from typing import Annotated
 
 from bson import ObjectId
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from ..agents.pipeline import run_discovery_pipeline
 from ..database import get_db
 from ..models import DiscoveryCreate, DiscoverySummary
+from .auth import current_user
 
 router = APIRouter(prefix="/api/discoveries", tags=["discoveries"])
 
@@ -18,13 +20,14 @@ def _oid(id_str: str) -> ObjectId:
 
 
 @router.post("", status_code=201)
-async def create_discovery(body: DiscoveryCreate):
+async def create_discovery(body: DiscoveryCreate, user: Annotated[dict, Depends(current_user)]):
     db = get_db()
     now = datetime.utcnow()
 
     # Insert a placeholder so we can return the ID immediately if needed
     doc = {
         "workspace_name": body.workspace_name,
+        "user_id": user["_id"],
         "intake": body.intake.model_dump(),
         "dashboard": {},
         "status": "processing",
@@ -60,10 +63,10 @@ async def create_discovery(body: DiscoveryCreate):
 
 
 @router.get("")
-async def list_discoveries():
+async def list_discoveries(user: Annotated[dict, Depends(current_user)]):
     db = get_db()
     cursor = db.discoveries.find(
-        {}, {"workspace_name": 1, "status": 1, "created_at": 1}
+        {"user_id": user["_id"]}, {"workspace_name": 1, "status": 1, "created_at": 1}
     ).sort("created_at", -1).limit(50)
     items = []
     async for doc in cursor:
@@ -79,9 +82,9 @@ async def list_discoveries():
 
 
 @router.get("/{discovery_id}")
-async def get_discovery(discovery_id: str):
+async def get_discovery(discovery_id: str, user: Annotated[dict, Depends(current_user)]):
     db = get_db()
-    doc = await db.discoveries.find_one({"_id": _oid(discovery_id)})
+    doc = await db.discoveries.find_one({"_id": _oid(discovery_id), "user_id": user["_id"]})
     if not doc:
         raise HTTPException(404, "Discovery not found")
     doc["_id"] = str(doc["_id"])
@@ -89,10 +92,10 @@ async def get_discovery(discovery_id: str):
 
 
 @router.get("/{discovery_id}/dashboard")
-async def get_dashboard(discovery_id: str):
+async def get_dashboard(discovery_id: str, user: Annotated[dict, Depends(current_user)]):
     db = get_db()
     doc = await db.discoveries.find_one(
-        {"_id": _oid(discovery_id)}, {"dashboard": 1, "status": 1}
+        {"_id": _oid(discovery_id), "user_id": user["_id"]}, {"dashboard": 1, "status": 1}
     )
     if not doc:
         raise HTTPException(404, "Discovery not found")
@@ -102,12 +105,12 @@ async def get_dashboard(discovery_id: str):
 
 
 @router.patch("/{discovery_id}/dashboard")
-async def update_dashboard(discovery_id: str, updates: dict):
+async def update_dashboard(discovery_id: str, updates: dict, user: Annotated[dict, Depends(current_user)]):
     db = get_db()
     set_fields = {f"dashboard.{k}": v for k, v in updates.items()}
     set_fields["updated_at"] = datetime.utcnow()
     result = await db.discoveries.update_one(
-        {"_id": _oid(discovery_id)}, {"$set": set_fields}
+        {"_id": _oid(discovery_id), "user_id": user["_id"]}, {"$set": set_fields}
     )
     if result.matched_count == 0:
         raise HTTPException(404, "Discovery not found")
