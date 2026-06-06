@@ -36,7 +36,7 @@ const statusPill = {
   queued:  'bg-cream-50 border-ink-100 text-ink-500',
 }
 
-export default function AgentWorkspace() {
+export default function AgentWorkspace({ dashboard: _dashboard }) {
   const [filter, setFilter] = useState('All')
   const filters = ['All', 'Locations', 'Audience', 'Market validation', 'Money & grants']
   const visible = filter === 'All' ? LONDON_DATASETS : LONDON_DATASETS.filter(d => d.used_in.includes(filter))

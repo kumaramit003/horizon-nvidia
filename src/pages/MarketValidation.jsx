@@ -80,7 +80,12 @@ const impactPill = (k) =>
   : k === 'Risk' ? 'bg-rose-100 border-rose-200 text-ink-800'
   : 'bg-cream-50 border-ink-100 text-ink-700'
 
-export default function MarketValidation() {
+export default function MarketValidation({ dashboard }) {
+  const _evidence = dashboard?.evidence?.length ? dashboard.evidence : evidence
+  const _radar = dashboard?.radar?.length ? dashboard.radar : radarCats
+  const _experiments = dashboard?.experiments?.length ? dashboard.experiments : experiments
+  const _verdict = dashboard?.validation_verdict || "Promising — but you'll have to earn it."
+  const _verdictDesc = dashboard?.validation_description || "Demand signals around office density and corporate catering are real. The risks are competition and high rent exposure — both fixable if you start with B2B pre-orders before signing any lease."
   return (
     <div className="space-y-10">
       {/* Summary headline */}
@@ -90,10 +95,10 @@ export default function MarketValidation() {
         <div className="relative">
           <Tag kind="Recommended">Verdict</Tag>
           <h2 className="mt-4 display text-[44px] leading-tight text-ink-900">
-            Promising — but you'll have to <span className="italic-accent text-peach-500">earn it.</span>
+            {_verdict.includes('—') ? <>{_verdict.split('—')[0]}— <span className="italic-accent text-peach-500">{_verdict.split('—')[1]}</span></> : _verdict}
           </h2>
           <p className="mt-4 max-w-[72ch] text-[16px] leading-relaxed text-ink-500">
-            Demand signals around office density and corporate catering are real. The risks are competition and high rent exposure — both fixable if you start with B2B pre-orders before signing any lease.
+            {_verdictDesc}
           </p>
           <div className="mt-6 flex flex-wrap gap-2">
             <Tag kind="Opportunity">Office density</Tag>
@@ -122,7 +127,7 @@ export default function MarketValidation() {
             right={<AskWhyButton>Sources</AskWhyButton>}
           />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {evidence.map(e => {
+            {_evidence.map(e => {
               const Icon = e.icon
               return (
                 <div key={e.signal} className={`rounded-2xl border border-black/[0.05] p-5 gradient-soft-${e.tone}`}>
@@ -147,10 +152,10 @@ export default function MarketValidation() {
         <Card className="!p-7">
           <SectionHeader eyebrow="Risk shape" title="Seven dimensions" description="Bigger = more concerning." />
           <div className="flex justify-center">
-            <RiskRadar cats={radarCats} />
+            <RiskRadar cats={_radar} />
           </div>
           <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[12.5px]">
-            {radarCats.map(c => (
+            {_radar.map(c => (
               <div key={c.label} className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-peach-500" />
                 <span className="text-ink-700">{c.label}</span>
@@ -187,7 +192,7 @@ export default function MarketValidation() {
             right={<AskWhyButton>Re-rank</AskWhyButton>}
           />
           <ul className="space-y-2.5">
-            {experiments.map((x, i) => (
+            {_experiments.map((x, i) => (
               <li key={x.title} className="flex items-center gap-3.5 rounded-2xl bg-cream-50 px-4 py-3">
                 <span className="display grid h-8 w-8 place-items-center rounded-full bg-white text-[14px] text-ink-900 shadow-soft">
                   {i + 1}

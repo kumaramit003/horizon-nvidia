@@ -46,7 +46,7 @@ const statusPill = {
   todo:  'bg-cream-50 border-ink-100 text-ink-500',
 }
 
-export default function ActionPlan() {
+export default function ActionPlan({ dashboard }) {
   const [checked, setChecked] = useState({})
 
   return (

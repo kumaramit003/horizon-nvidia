@@ -95,7 +95,8 @@ const Pin = ({ x, y, label }) => (
   <span className="absolute -translate-x-1/2 -translate-y-1/2 text-[9.5px] font-mono text-sky-300" style={{ left: `${x}%`, top: `${y - 5}%` }}>● {label}</span>
 )
 
-export default function Locations() {
+export default function Locations({ dashboard }) {
+  const _locations = dashboard?.locations?.length ? dashboard.locations : locations
   const [activeLayers, setActiveLayers] = useState({ customers: true, competitors: true, transport: true, opportunity: false })
   const toggle = id => setActiveLayers(s => ({ ...s, [id]: !s[id] }))
   const selected = locations[0]

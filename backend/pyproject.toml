@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "founderos-backend"
+version = "0.1.0"
+description = "FounderOS London – FastAPI backend"
+authors = ["FounderOS <hello@founderos.london>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = {extras = ["standard"], version = "^0.115"}
+uvicorn = {extras = ["standard"], version = "^0.34"}
+motor = "^3.7"
+pydantic = {extras = ["email"], version = "^2.11"}
+pydantic-settings = "^2.9"
+python-dotenv = "^1.1"
+openai = "^2.41.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

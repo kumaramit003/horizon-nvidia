@@ -28,7 +28,11 @@ const grants = [
   { name: 'Startup loan / business finance support',  fit: 59, why: 'Unsecured £500 – £25,000 with low APR for first-time founders.',     notes: 'Credit check + 3-yr forecast required',      deadline: 'Rolling',           docs: ['Personal SoA', 'Business plan'], tone: 'butter' },
 ]
 
-export default function Financials() {
+export default function Financials({ dashboard }) {
+  const _bands = dashboard?.cost_bands?.length ? dashboard.cost_bands : bands
+  const _assumptions = dashboard?.monthly_assumptions?.length ? dashboard.monthly_assumptions : assumptions
+  const _grants = dashboard?.grants?.length ? dashboard.grants : grants
+  const _fundingReadiness = dashboard?.funding_readiness || 54
   return (
     <div className="space-y-10">
       {/* Bands */}

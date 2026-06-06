@@ -1,0 +1,30 @@
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGODB_URL=mongodb://mongo:27017
+      - DATABASE_NAME=founderos
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-not-needed}
+      - NVIDIA_BASE_URL=${NVIDIA_BASE_URL:-http://host.docker.internal:8080/v1}
+      - NVIDIA_MODEL=${NVIDIA_MODEL:-nvidia/llama-3.1-nemotron-70b-instruct}
+    depends_on:
+      - mongo
+
+  frontend:
+    build: .
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongo_data:
