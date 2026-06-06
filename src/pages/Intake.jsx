@@ -44,15 +44,16 @@ function Orb({ state, who = 'flora' }) {
 }
 
 // Compact audio-reactive waveform shown under the orb while listening.
-function ListeningBars({ level = 0 }) {
-  // 9 bars; each bar's animated baseline differs so even at silence it breathes
+// `silenceProgress` (0..1) fades the bars as we approach auto-stop, giving
+// a quiet visual cue that Flora is about to take the turn.
+function ListeningBars({ level = 0, silenceProgress = 0 }) {
   const bars = 9
+  const fade = 1 - silenceProgress * 0.65 // 1.0 → 0.35 at full silence
   return (
-    <div className="mt-4 flex h-8 items-center gap-[3px]">
+    <div className="mt-4 flex h-8 items-center gap-[3px]" style={{ opacity: fade }}>
       {Array.from({ length: bars }).map((_, i) => {
-        // Center bars react more; edges less
         const centerWeight = 1 - Math.abs(i - (bars - 1) / 2) / ((bars - 1) / 2) * 0.4
-        const minH = 14 // px when totally silent
+        const minH = 14
         const maxH = 28
         const h = minH + Math.max(0, Math.min(1, level)) * (maxH - minH) * centerWeight
         return (
@@ -136,6 +137,7 @@ export default function Intake({ onComplete }) {
   const [micError, setMicError] = useState('')
   const [floraStall, setFloraStall] = useState('') // verbal filler while thinking
   const [micLevel, setMicLevel] = useState(0) // 0..1, drives the waveform bars
+  const [silenceProgress, setSilenceProgress] = useState(0) // 0..1 toward auto-stop
   const [floraAudioPlaying, setFloraAudioPlaying] = useState(false)
   const inputRef = useRef(null)
   const chatEndRef = useRef(null)
@@ -306,6 +308,7 @@ export default function Intake({ onComplete }) {
       vadAcRef.current = null
     }
     setMicLevel(0)
+    setSilenceProgress(0)
   }
 
   const startListening = async () => {
@@ -333,9 +336,9 @@ export default function Intake({ onComplete }) {
       vadAcRef.current = ac
 
       const data = new Uint8Array(analyser.frequencyBinCount)
-      const SILENCE_THRESHOLD = 12      // avg byte freq below this = silence
+      const SILENCE_THRESHOLD = 14      // avg byte freq below this = silence
       const MIN_SPEECH_MS = 350         // need at least this much voiced audio before counting silence
-      const SILENCE_TO_STOP_MS = 1400   // this much silence after speech → auto-stop
+      const SILENCE_TO_STOP_MS = 2000   // 2s of silence → Flora takes the turn
       const HARD_STOP_MS = 45000        // 45s upper bound
 
       let spokeAt = 0
@@ -353,9 +356,12 @@ export default function Intake({ onComplete }) {
         if (avg > SILENCE_THRESHOLD) {
           if (!spokeAt) spokeAt = now
           silenceAt = 0
+          setSilenceProgress(0)
         } else if (spokeAt && (now - spokeAt) > MIN_SPEECH_MS) {
           if (!silenceAt) silenceAt = now
-          else if ((now - silenceAt) > SILENCE_TO_STOP_MS) {
+          const elapsed = now - silenceAt
+          setSilenceProgress(Math.min(1, elapsed / SILENCE_TO_STOP_MS))
+          if (elapsed > SILENCE_TO_STOP_MS) {
             finishListening()
             return
           }
@@ -496,14 +502,15 @@ export default function Intake({ onComplete }) {
             <div className="mt-4 text-[11px] font-medium uppercase tracking-[0.18em] text-ink-500">
               {floraThinking ? 'Flora is thinking…'
                 : floraTyping ? 'Flora is speaking'
-                : micState === 'recording' ? 'Listening · just speak'
+                : micState === 'recording'
+                  ? (silenceProgress > 0.4 ? 'Okay, taking your turn…' : 'Listening · just speak')
                 : micState === 'transcribing' ? 'Catching that…'
                 : 'Your turn'}
             </div>
 
             {/* Audio-reactive bars below the orb when listening */}
             {micState === 'recording' && (
-              <ListeningBars level={micLevel} />
+              <ListeningBars level={micLevel} silenceProgress={silenceProgress} />
             )}
 
             <div className="mt-4">
