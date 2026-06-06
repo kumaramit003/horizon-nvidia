@@ -38,6 +38,10 @@ export default function IdeaProfile({ dashboard, section }) {
   const description = idea.description || ''
   const subtitle = idea.subtitle || ''
 
+  // Open the "Change your plan" voice modal pre-filled with a command.
+  const askFlora = (cmd) =>
+    window.dispatchEvent(new CustomEvent('voice-prefill', { detail: cmd }))
+
   return (
     <div className="space-y-10">
       {/* Hero */}
@@ -148,7 +152,11 @@ export default function IdeaProfile({ dashboard, section }) {
               <div key={a.text} className={`rounded-2xl border border-black/[0.05] p-5 gradient-soft-${a.tone}`}>
                 <Tag kind={a.tag}>{a.tag}</Tag>
                 <p className="mt-3 display text-[18px] leading-snug text-ink-900">{a.text}</p>
-                <MiniActions />
+                <MiniActions
+                  onAccept={() => askFlora(`I agree with this — build on it: "${a.text}"`)}
+                  onEdit={() => askFlora(`Let me correct this assumption: "${a.text}" — actually, `)}
+                  onChallenge={() => askFlora(`Challenge this assumption and tell me if it's wrong: "${a.text}"`)}
+                />
               </div>
             ))}
           </div>
@@ -161,7 +169,14 @@ export default function IdeaProfile({ dashboard, section }) {
           <SectionHeader
             eyebrow="Open questions"
             title="Answer these to push clarity to 90%"
-            right={<button className="btn-text">Ask Flora in voice <Mic size={12} /></button>}
+            right={
+              <button
+                className="btn-text"
+                onClick={() => askFlora('I want to answer your open questions about my idea.')}
+              >
+                Ask Flora in voice <Mic size={12} />
+              </button>
+            }
           />
           <ul className="divide-y divide-black/[0.05]">
             {openQuestions.map((q, i) => (
@@ -170,7 +185,12 @@ export default function IdeaProfile({ dashboard, section }) {
                   {i + 1}
                 </span>
                 <span className="flex-1 text-[15px] text-ink-900">{q}</span>
-                <button className="btn-ghost text-[12px]">Answer <ArrowUpRight size={11} /></button>
+                <button
+                  className="btn-ghost shrink-0 text-[12px]"
+                  onClick={() => askFlora(`About my idea — ${q} `)}
+                >
+                  Answer <ArrowUpRight size={11} />
+                </button>
               </li>
             ))}
           </ul>

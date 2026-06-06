@@ -1,13 +1,6 @@
-import React, { useState } from 'react'
-import { MapPin, Layers, AlertTriangle, ArrowRight } from 'lucide-react'
+import React from 'react'
+import { MapPin, AlertTriangle, ArrowRight } from 'lucide-react'
 import { Card, SectionHeader, Tag, AskWhyButton, VoiceCommandBlock, SourceChip, EmptyPage, SectionLoading } from '../components/ui'
-
-const layers = [
-  { id: 'customers',  label: 'Customer density', color: '#FF9259' },
-  { id: 'competitors',label: 'Competitors',      color: '#FF8A91' },
-  { id: 'transport',  label: 'Transport hubs',   color: '#7AABD4' },
-  { id: 'opportunity',label: 'Opportunity',      color: '#9DD9AB' },
-]
 
 const goodTone = (v) =>
   v === 'High' || v === 'Medium-High' ? 'bg-mint-100 border-mint-200 text-ink-800'
@@ -21,62 +14,39 @@ const badTone = (v) =>
 
 const isStrong = (v) => v === 'High' || v === 'Medium-High'
 
-const Blob = ({ x, y, color, size }) => (
-  <span className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full blur-2xl"
-    style={{ left: `${x}%`, top: `${y}%`, width: size, height: size, background: color }} />
-)
-const Pin = ({ x, y, label }) => (
-  <span className="absolute -translate-x-1/2 -translate-y-1/2 text-[9.5px] font-mono text-sky-300" style={{ left: `${x}%`, top: `${y - 5}%` }}>● {label}</span>
-)
-
-function MapPlaceholder({ locations, activeLayers, onToggle }) {
+// Honest, clear shortlist: each candidate area ranked by Finn's fit score
+// with a bar + one-line reason. No fake geography.
+function AreaRanking({ locations, selectedId }) {
+  const ranked = [...locations].sort((a, b) => (b.score || 0) - (a.score || 0))
   return (
-    <div className="relative aspect-[16/10] w-full overflow-hidden rounded-2xl border border-black/[0.06] bg-cream-50">
-      <div className="absolute inset-0 dot-grid opacity-70" />
-      <svg viewBox="0 0 100 60" className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
-        <path d="M -5 38 C 20 28, 35 50, 55 42 S 90 32, 110 40" fill="none" stroke="#7AABD4" strokeWidth="0.7" opacity="0.5" />
-        <path d="M -5 38 C 20 28, 35 50, 55 42 S 90 32, 110 40" fill="none" stroke="#7AABD4" strokeWidth="3" opacity="0.10" />
-      </svg>
-
-      {/* Demand/opportunity/transport overlays derived from the real locations */}
-      {activeLayers.customers && locations.map(l => (
-        <Blob key={`c-${l.id}`} x={l.x} y={l.y} color="rgba(255,146,89,0.30)" size={isStrong(l.demand) ? 170 : 120} />
-      ))}
-      {activeLayers.competitors && locations.filter(l => l.compete === 'High').map(l => (
-        <Blob key={`x-${l.id}`} x={l.x} y={l.y} color="rgba(255,138,145,0.26)" size={120} />
-      ))}
-      {activeLayers.opportunity && locations.filter(l => l.score >= 65).map(l => (
-        <Blob key={`o-${l.id}`} x={l.x} y={l.y} color="rgba(157,217,171,0.28)" size={120} />
-      ))}
-      {activeLayers.transport && locations.filter(l => isStrong(l.transport)).map(l => (
-        <Pin key={`t-${l.id}`} x={l.x} y={l.y} label={l.name.slice(0, 3).toUpperCase()} />
-      ))}
-
-      {locations.map(l => (
-        <button key={l.id} className="absolute z-10 -translate-x-1/2 -translate-y-1/2" style={{ left: `${l.x}%`, top: `${l.y}%` }}>
-          <span className="relative flex h-3.5 w-3.5 items-center justify-center">
-            <span className={`absolute h-full w-full animate-ringOut rounded-full ${l.primary ? 'bg-peach-300/50' : 'bg-sky-300/40'}`} />
-            <span className={`relative h-2.5 w-2.5 rounded-full ${l.primary ? 'bg-peach-500' : 'bg-sky-300'} ring-2 ring-white shadow-soft`} />
-          </span>
-          <span className="absolute left-1/2 top-4 -translate-x-1/2 whitespace-nowrap rounded-md border border-black/[0.05] bg-white px-2 py-0.5 text-[10.5px] font-medium text-ink-900 shadow-soft">
-            {l.name}
-          </span>
-        </button>
-      ))}
-
-      <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center gap-1.5 rounded-full border border-black/[0.06] bg-white/90 p-1 backdrop-blur">
-        {layers.map(l => (
-          <button
+    <div className="space-y-3">
+      {ranked.map((l, i) => {
+        const isTop = l.id === selectedId
+        return (
+          <div
             key={l.id}
-            onClick={() => onToggle(l.id)}
-            className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors ${activeLayers[l.id] ? 'bg-cream-100 text-ink-900' : 'text-ink-500 hover:bg-cream-50'}`}
+            className={`rounded-2xl border px-4 py-3.5 transition-colors ${isTop ? 'border-peach-200 bg-peach-50' : 'border-black/[0.05] bg-cream-50'}`}
           >
-            <span className="h-2 w-2 rounded-full" style={{ background: l.color, opacity: activeLayers[l.id] ? 1 : 0.35 }} />
-            {l.label}
-          </button>
-        ))}
-      </div>
-      <div className="absolute right-3 top-3 pill"><Layers size={11} /> Greater London · stylised</div>
+            <div className="flex items-center gap-2.5">
+              <span className={`display grid h-7 w-7 shrink-0 place-items-center rounded-full text-[13px] ${isTop ? 'bg-peach-500 text-white' : 'bg-white text-ink-700 shadow-soft'}`}>
+                {i + 1}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[14.5px] font-medium text-ink-900">{l.name}</span>
+              {isTop && <Tag kind="Recommended">Top pick</Tag>}
+              <span className="shrink-0 font-mono text-[13px] text-ink-700">
+                {l.score}<span className="text-ink-400">/100</span>
+              </span>
+            </div>
+            <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-white">
+              <div
+                className={`h-full rounded-full ${isTop ? 'bg-gradient-to-r from-peach-400 to-peach-500' : 'bg-sage-300'}`}
+                style={{ width: `${Math.max(4, Math.min(100, l.score || 0))}%` }}
+              />
+            </div>
+            {l.reco && <div className="mt-2 text-[12.5px] leading-snug text-ink-500">{l.reco}</div>}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -102,8 +72,6 @@ function deriveWatch(loc) {
 
 export default function Locations({ dashboard, section }) {
   const _locations = dashboard?.locations?.length ? dashboard.locations : []
-  const [activeLayers, setActiveLayers] = useState({ customers: true, competitors: true, transport: true, opportunity: false })
-  const toggle = id => setActiveLayers(s => ({ ...s, [id]: !s[id] }))
 
   if (!_locations.length) {
     if (section === 'processing' || section === 'pending') return <SectionLoading label="where to launch" />
@@ -118,12 +86,12 @@ export default function Locations({ dashboard, section }) {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_1fr]">
         <Card className="!p-7">
           <SectionHeader
-            eyebrow="London at a glance"
-            title="Where the demand lives"
-            description="Layers built from public London Datastore sources."
-            right={<AskWhyButton>Data sources</AskWhyButton>}
+            eyebrow="Your shortlist"
+            title="Areas ranked by fit"
+            description="Finn scored each area on demand, competition, transport, cost and B2B potential."
+            right={<AskWhyButton question="How did you score and rank these London areas for my idea?">How scored?</AskWhyButton>}
           />
-          <MapPlaceholder locations={_locations} activeLayers={activeLayers} onToggle={toggle} />
+          <AreaRanking locations={_locations} selectedId={selected.id} />
           <div className="mt-4 flex flex-wrap items-center gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-ink-500">Built from</span>
             <SourceChip name="Workplace Zone Statistics" slug="workplace-zone-statistics" small />

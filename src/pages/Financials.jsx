@@ -1,5 +1,5 @@
-import React from 'react'
-import { Plus, ArrowRight, Pencil, FileText } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Plus, ArrowRight, Trash2, FileText } from 'lucide-react'
 import { Card, SectionHeader, Tag, Progress, AskWhyButton, VoiceCommandBlock, SourceChip, EmptyPage, SectionLoading } from '../components/ui'
 import { DynIcon } from '../lib/icons'
 
@@ -28,8 +28,6 @@ export default function Financials({ dashboard, section }) {
     if (section === 'processing' || section === 'pending') return <SectionLoading label="money & grants" />
     return <EmptyPage label="financial analysis" />
   }
-
-  const burn = estimateMonthlyBurn(_assumptions)
 
   return (
     <div className="space-y-10">
@@ -60,57 +58,8 @@ export default function Financials({ dashboard, section }) {
       </section>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.5fr_1fr]">
-        {/* Assumptions */}
-        <Card className="!p-7">
-          <SectionHeader
-            eyebrow="Where the money goes"
-            title="Monthly estimates you can edit"
-            description="Click any row to override — totals recalculate."
-            right={<button className="btn-ghost text-[12.5px]"><Plus size={12} /> Add line</button>}
-          />
-          <div className="overflow-hidden rounded-2xl border border-black/[0.05]">
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr className="bg-cream-50 text-left text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500">
-                  <th className="px-4 py-3">Line</th>
-                  <th className="px-4 py-3">Estimate</th>
-                  <th className="px-4 py-3">Notes</th>
-                  <th className="px-4 py-3 text-right">Edit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {_assumptions.map(a => {
-                  return (
-                    <tr key={a.row} className="border-t border-black/[0.04] hover:bg-cream-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <span className="grid h-7 w-7 place-items-center rounded-xl bg-cream-100 text-ink-700">
-                            <DynIcon name={a.icon} size={12} />
-                          </span>
-                          <span className="text-ink-900">{a.row}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-ink-900">{a.range}</td>
-                      <td className="px-4 py-3 text-ink-500">{a.notes}</td>
-                      <td className="px-4 py-3 text-right">
-                        <button className="btn-ghost !py-1 !px-2 text-[11.5px]"><Pencil size={11} /> Edit</button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-              {burn != null && (
-                <tfoot>
-                  <tr className="border-t border-black/[0.05] bg-cream-100">
-                    <td className="px-4 py-3 font-semibold text-ink-900">Estimated monthly burn</td>
-                    <td className="px-4 py-3 font-mono text-peach-500 text-[15px]">£{burn.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-ink-500" colSpan={2}>Recurring monthly costs only</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        </Card>
+        {/* Assumptions — editable */}
+        <AssumptionsTable initial={_assumptions} />
 
         {/* Funding readiness */}
         <Card className="relative overflow-hidden !p-7">
@@ -201,5 +150,108 @@ export default function Financials({ dashboard, section }) {
         ]}
       />
     </div>
+  )
+}
+
+// Editable monthly-cost table. Seeds from Finn's estimates, lets the founder
+// override any cell, add or delete rows, and recomputes the monthly burn live.
+function AssumptionsTable({ initial }) {
+  const seed = () => (initial || []).map((a, i) => ({
+    id: `${i}-${a.row || 'row'}`,
+    row: a.row || '',
+    range: a.range || '',
+    notes: a.notes || '',
+    icon: a.icon || 'PoundSterling',
+  }))
+  const [rows, setRows] = useState(seed)
+
+  // Re-seed when Finn regenerates this section (new dashboard data).
+  useEffect(() => { setRows(seed()) /* eslint-disable-next-line */ }, [JSON.stringify(initial)])
+
+  const update = (id, field, value) =>
+    setRows(rs => rs.map(r => (r.id === id ? { ...r, [field]: value } : r)))
+  const remove = (id) => setRows(rs => rs.filter(r => r.id !== id))
+  const add = () =>
+    setRows(rs => [...rs, { id: `new-${Date.now()}`, row: '', range: '', notes: '', icon: 'Plus' }])
+
+  const burn = estimateMonthlyBurn(rows)
+
+  return (
+    <Card className="!p-7">
+      <SectionHeader
+        eyebrow="Where the money goes"
+        title="Monthly estimates you can edit"
+        description="Edit any cell — the monthly burn recalculates as you type."
+        right={<button onClick={add} className="btn-ghost text-[12.5px]"><Plus size={12} /> Add line</button>}
+      />
+      <div className="overflow-hidden rounded-2xl border border-black/[0.05]">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="bg-cream-50 text-left text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500">
+              <th className="px-4 py-3">Line</th>
+              <th className="px-4 py-3 w-[140px]">Estimate</th>
+              <th className="px-4 py-3">Notes</th>
+              <th className="px-3 py-3 w-[44px]"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.id} className="border-t border-black/[0.04] hover:bg-cream-50/60">
+                <td className="px-4 py-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <span className="grid h-7 w-7 shrink-0 place-items-center rounded-xl bg-cream-100 text-ink-700">
+                      <DynIcon name={r.icon} size={12} />
+                    </span>
+                    <input
+                      value={r.row}
+                      onChange={e => update(r.id, 'row', e.target.value)}
+                      placeholder="Cost item"
+                      className="w-full min-w-0 bg-transparent text-ink-900 outline-none placeholder:text-ink-300 focus:bg-white focus:rounded-md focus:px-1.5 focus:py-0.5"
+                    />
+                  </div>
+                </td>
+                <td className="px-4 py-2.5">
+                  <input
+                    value={r.range}
+                    onChange={e => update(r.id, 'range', e.target.value)}
+                    placeholder="£X / mo"
+                    className="w-full min-w-0 bg-transparent font-mono text-ink-900 outline-none placeholder:text-ink-300 focus:bg-white focus:rounded-md focus:px-1.5 focus:py-0.5"
+                  />
+                </td>
+                <td className="px-4 py-2.5">
+                  <input
+                    value={r.notes}
+                    onChange={e => update(r.id, 'notes', e.target.value)}
+                    placeholder="Note"
+                    className="w-full min-w-0 bg-transparent text-ink-500 outline-none placeholder:text-ink-300 focus:bg-white focus:rounded-md focus:px-1.5 focus:py-0.5"
+                  />
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  <button
+                    onClick={() => remove(r.id)}
+                    className="grid h-7 w-7 place-items-center rounded-lg text-ink-400 hover:bg-rose-100 hover:text-rose-300"
+                    title="Remove line"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr><td colSpan={4} className="px-4 py-6 text-center text-[13px] text-ink-400">No lines yet — add one.</td></tr>
+            )}
+          </tbody>
+          {burn != null && (
+            <tfoot>
+              <tr className="border-t border-black/[0.05] bg-cream-100">
+                <td className="px-4 py-3 font-semibold text-ink-900">Estimated monthly burn</td>
+                <td className="px-4 py-3 font-mono text-peach-500 text-[15px]">£{burn.toLocaleString()}</td>
+                <td className="px-4 py-3 text-ink-500" colSpan={2}>Recurring monthly costs only</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </Card>
   )
 }

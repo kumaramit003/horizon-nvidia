@@ -1,5 +1,6 @@
 import React from 'react'
 import { Check, Pencil, X, RefreshCw, HelpCircle, Sparkles, ArrowUpRight, Database } from 'lucide-react'
+import { resolveDataset } from '../lib/datasets'
 
 export function Card({ className = '', children, padded = true, ...rest }) {
   return (
@@ -89,22 +90,27 @@ export function Progress({ value, label, sublabel, tone = 'coral' }) {
 export function MiniActions({ onAccept, onEdit, onChallenge }) {
   return (
     <div className="mt-4 flex flex-wrap items-center gap-1.5">
-      <button className="btn-ghost !py-1 !px-2.5 text-[11.5px] hover:!bg-mint-100">
+      <button onClick={onAccept} className="btn-ghost !py-1 !px-2.5 text-[11.5px] hover:!bg-mint-100">
         <Check size={12} /> Accept
       </button>
-      <button className="btn-ghost !py-1 !px-2.5 text-[11.5px]">
+      <button onClick={onEdit} className="btn-ghost !py-1 !px-2.5 text-[11.5px]">
         <Pencil size={12} /> Edit
       </button>
-      <button className="btn-ghost !py-1 !px-2.5 text-[11.5px] hover:!bg-rose-100">
+      <button onClick={onChallenge} className="btn-ghost !py-1 !px-2.5 text-[11.5px] hover:!bg-rose-100">
         <X size={12} /> Challenge
       </button>
     </div>
   )
 }
 
-export function AskWhyButton({ children = 'Ask why' }) {
+// Opens the "Change your plan" voice modal asking why something was
+// recommended. Pass a specific `question` for context.
+export function AskWhyButton({ children = 'Ask why', question = 'Why did you recommend this? Walk me through your reasoning.' }) {
   return (
-    <button className="btn-ghost !py-1 !px-2.5 text-[11.5px]">
+    <button
+      className="btn-ghost !py-1 !px-2.5 text-[11.5px]"
+      onClick={() => window.dispatchEvent(new CustomEvent('voice-prefill', { detail: question }))}
+    >
       <HelpCircle size={12} /> {children}
     </button>
   )
@@ -212,17 +218,21 @@ export function EmptyPage({ label = 'data' }) {
 }
 
 export function SourceChip({ name, publisher, slug, small }) {
+  // The model invents slugs that don't exist on data.london.gov.uk, so
+  // resolve to a verified URL (deep-link or datastore search) — never a 404.
+  const resolved = resolveDataset(slug, name)
   return (
     <a
-      href={slug ? `https://data.london.gov.uk/dataset/${slug}` : 'https://data.london.gov.uk/dataset/'}
+      href={resolved.url}
       target="_blank"
       rel="noreferrer"
+      title={`Open “${resolved.name}” on the London Datastore`}
       className={`inline-flex items-center gap-1.5 rounded-full border border-black/[0.06] bg-cream-50 ${small ? 'px-2 py-0.5 text-[10.5px]' : 'px-2.5 py-1 text-[11px]'} font-medium text-ink-700 transition-colors hover:bg-white hover:text-ink-900`}
     >
       <Database size={small ? 10 : 11} className="text-peach-500" />
       <span className="text-ink-500">London Datastore</span>
       <span className="hidden sm:inline">·</span>
-      <span className="hidden sm:inline truncate max-w-[160px]">{name}</span>
+      <span className="hidden sm:inline truncate max-w-[160px]">{resolved.name}</span>
     </a>
   )
 }

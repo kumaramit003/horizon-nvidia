@@ -7,6 +7,7 @@ import { Card, SectionHeader, Tag, Confidence, AskWhyButton } from '../component
 import { LeafMark, Tagline } from '../components/Brand'
 import { LONDON_DATASETS } from '../data/londonDatasets'
 import { DynIcon } from '../lib/icons'
+import { resolveDataset } from '../lib/datasets'
 
 const statusPill = {
   done:    'bg-sage-100 border-sage-200 text-forest-500',
@@ -190,7 +191,7 @@ export default function AgentWorkspace({ dashboard, onRerun }) {
           {visible.map(d => (
             <a
               key={d.slug}
-              href={`https://data.london.gov.uk/dataset/${d.slug}`}
+              href={resolveDataset(d.slug, d.name).url}
               target="_blank"
               rel="noreferrer"
               className="card relative overflow-hidden !p-5 transition-all hover:shadow-lift"
