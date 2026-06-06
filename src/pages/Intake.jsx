@@ -131,6 +131,7 @@ export default function Intake({ onComplete }) {
   const [userInput, setUserInput] = useState('')
   const [analysing, setAnalysing] = useState(false)
   const [pipelineDone, setPipelineDone] = useState(false)
+  const [handingOff, setHandingOff] = useState(false)
   const [error, setError] = useState(null)
   const [voiceError, setVoiceError] = useState('')
   const [micState, setMicState] = useState('idle') // idle | recording | transcribing
@@ -272,6 +273,10 @@ export default function Intake({ onComplete }) {
       setGathered(res.gathered || {})
 
       if (res.done) {
+        // Lock the conversation IMMEDIATELY — no more auto-listen, no more
+        // Flora chat calls. The handoff is irreversible from this point.
+        setHandingOff(true)
+        cancelListening()
         const finalConvo = [...updated, { speaker: 'flora', text: res.message }]
         setConversation(finalConvo)
         setFloraMessage(res.message)
@@ -408,9 +413,10 @@ export default function Intake({ onComplete }) {
   }
 
   // Auto-start listening once Flora has finished her turn (no audio, no
-  // typewriter, no thinking, not already recording).
+  // typewriter, no thinking, not already recording, not handing off).
   useEffect(() => {
     if (!started) return
+    if (handingOff || analysing || pipelineDone) return
     if (!micSupported) return
     if (floraTyping || floraThinking || floraAudioPlaying) return
     if (micState !== 'idle') return
@@ -419,7 +425,7 @@ export default function Intake({ onComplete }) {
     const t = setTimeout(() => { startListening() }, 350)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [started, floraMessage, floraTyping, floraThinking, floraAudioPlaying])
+  }, [started, floraMessage, floraTyping, floraThinking, floraAudioPlaying, handingOff, analysing, pipelineDone])
 
   // Cleanup on unmount
   useEffect(() => () => {
@@ -661,13 +667,34 @@ function Analysing() {
     'Estimating costs & matching grants',
     'Drafting your 7-day launch plan',
   ]
+  const FINAL_MESSAGES = [
+    'Finn is putting it all together…',
+    'Cross-checking the London datasets…',
+    'Almost there — sharpening the plan…',
+    'Finn is double-checking the numbers…',
+  ]
   const [stage, setStage] = useState(0)
+  const [finalMsg, setFinalMsg] = useState(0)
+
   useEffect(() => {
     if (stage >= STEPS.length - 1) return
     const delay = stage === 0 ? 4000 : 5000
     const t = setTimeout(() => setStage(s => s + 1), delay)
     return () => clearTimeout(t)
   }, [stage])
+
+  // After the steps finish, rotate a friendly "still working" message so the
+  // UI doesn't look frozen if the backend is still crunching.
+  useEffect(() => {
+    if (stage < STEPS.length - 1) return
+    const t = setInterval(() => {
+      setFinalMsg(m => (m + 1) % FINAL_MESSAGES.length)
+    }, 4500)
+    return () => clearInterval(t)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage])
+
+  const atEnd = stage >= STEPS.length - 1
 
   return (
     <div className="text-center">
@@ -676,8 +703,8 @@ function Analysing() {
       </p>
       <ul className="mt-8 mx-auto max-w-[480px] space-y-2 text-left">
         {STEPS.map((s, i) => {
-          const done = i < stage
-          const active = i === stage
+          const done = i < stage || (atEnd && i === stage)
+          const active = i === stage && !atEnd
           return (
             <li
               key={s}
@@ -702,6 +729,19 @@ function Analysing() {
           )
         })}
       </ul>
+      {atEnd && (
+        <div className="mt-6 flex flex-col items-center gap-2.5 animate-[fadeIn_0.5s_ease]">
+          <span className="inline-flex gap-1">
+            <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" />
+            <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '150ms' }} />
+            <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '300ms' }} />
+          </span>
+          <div key={finalMsg} className="text-[13px] text-forest-500 animate-[fadeIn_0.5s_ease]">
+            {FINAL_MESSAGES[finalMsg]}
+          </div>
+          <div className="text-[11px] text-ink-400">This can take up to a minute on longer conversations.</div>
+        </div>
+      )}
     </div>
   )
 }
