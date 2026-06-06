@@ -138,6 +138,22 @@ export const api = {
     })
   },
 
+  // Finn digs deeper on one section (re-runs just that module).
+  refineSection(id, section, instruction) {
+    return request(`/discoveries/${id}/refine-section`, {
+      method: 'POST',
+      body: JSON.stringify({ section, instruction }),
+    })
+  },
+
+  // Finn answers a question about the insights (no mutation).
+  askFinn(id, question) {
+    return request(`/discoveries/${id}/ask`, {
+      method: 'POST',
+      body: JSON.stringify({ question }),
+    })
+  },
+
   floraChat(conversation) {
     return request('/flora/chat', {
       method: 'POST',

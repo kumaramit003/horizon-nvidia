@@ -7,7 +7,8 @@ from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from ..agents.pipeline import ALL_SECTIONS, run_streaming_pipeline
+from ..agents.pipeline import ALL_SECTIONS, SECTION_KEYS, run_streaming_pipeline
+from ..agents.finn import answer_question, refine_section
 from ..database import get_db
 from ..models import DiscoveryCreate, DiscoverySummary
 from .auth import current_user
@@ -210,6 +211,80 @@ async def refine_discovery(
 
     _spawn_pipeline(oid, conversation)
     return {"ok": True, "id": discovery_id, "status": "processing"}
+
+
+class SectionRefineRequest(BaseModel):
+    section: str
+    instruction: str = ""
+
+
+async def _run_section_and_store(discovery_id: ObjectId, section: str, idea: dict, instruction: str) -> None:
+    """Re-run ONE Finn section in the background and persist just its keys."""
+    db = get_db()
+    try:
+        data = await refine_section(section, idea, instruction)
+        update = {f"sections.{section}": "ready" if data else "error", "updated_at": datetime.utcnow()}
+        if data:
+            for k, v in data.items():
+                update[f"dashboard.{k}"] = v
+        await db.discoveries.update_one({"_id": discovery_id}, {"$set": update})
+        # If nothing else is processing, mark the workspace fully ready again.
+        doc = await db.discoveries.find_one({"_id": discovery_id}, {"sections": 1})
+        secs = (doc or {}).get("sections") or {}
+        if not any(s == "processing" for s in secs.values()):
+            await db.discoveries.update_one({"_id": discovery_id}, {"$set": {"status": "dashboard_ready"}})
+    except Exception:
+        logger.exception("Section refine failed for %s/%s", discovery_id, section)
+        await db.discoveries.update_one({"_id": discovery_id}, {"$set": {f"sections.{section}": "error"}})
+
+
+@router.post("/{discovery_id}/refine-section")
+async def refine_discovery_section(
+    discovery_id: str,
+    body: SectionRefineRequest,
+    user: Annotated[dict, Depends(current_user)],
+):
+    """Ask Finn to dig deeper on ONE area — re-runs just that section."""
+    section = body.section
+    if section not in SECTION_KEYS or section == "idea":
+        raise HTTPException(400, f"Unknown section '{section}'")
+    db = get_db()
+    oid = _oid(discovery_id)
+    doc = await db.discoveries.find_one({"_id": oid, "user_id": user["_id"]})
+    if not doc:
+        raise HTTPException(404, "Discovery not found")
+
+    idea = (doc.get("dashboard") or {}).get("idea") or {}
+    await db.discoveries.update_one(
+        {"_id": oid},
+        {"$set": {f"sections.{section}": "processing", "status": "processing", "updated_at": datetime.utcnow()}},
+    )
+    task = asyncio.create_task(_run_section_and_store(oid, section, idea, body.instruction.strip()))
+    _pipeline_tasks.add(task)
+    task.add_done_callback(_pipeline_tasks.discard)
+    return {"ok": True, "id": discovery_id, "section": section, "status": "processing"}
+
+
+class AskRequest(BaseModel):
+    question: str
+
+
+@router.post("/{discovery_id}/ask")
+async def ask_finn(discovery_id: str, body: AskRequest, user: Annotated[dict, Depends(current_user)]):
+    """Finn answers a question about the generated insights. No mutation."""
+    q = (body.question or "").strip()
+    if not q:
+        raise HTTPException(400, "Empty question")
+    db = get_db()
+    doc = await db.discoveries.find_one({"_id": _oid(discovery_id), "user_id": user["_id"]}, {"dashboard": 1})
+    if not doc:
+        raise HTTPException(404, "Discovery not found")
+    try:
+        answer = await answer_question(doc.get("dashboard") or {}, q)
+    except Exception as e:
+        logger.exception("Finn Q&A failed")
+        raise HTTPException(502, f"Finn couldn't answer: {e}")
+    return {"answer": answer}
 
 
 @router.post("/{discovery_id}/rerun")

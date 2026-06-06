@@ -14,11 +14,12 @@ sections. Two design choices keep this fast and cheap:
 """
 
 import asyncio
+import json
 import logging
 import time
 
 from ..config import settings
-from ..llm import chat_json
+from ..llm import chat_json, chat_text
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +177,60 @@ async def run_finn_module(module: dict, brief: str) -> dict | None:
     except Exception as e:  # noqa: BLE001
         logger.error("[finn:%s] FAILED in %.1fs: %s", name, time.time() - start, e)
         return None
+
+
+async def refine_section(section_name: str, idea_profile: dict, instruction: str) -> dict | None:
+    """Re-run a single Finn module with an extra founder instruction folded
+    into the brief (e.g. 'look deeper into competitors', 'find more grants')."""
+    module = FINN_MODULE_BY_NAME.get(section_name)
+    if not module:
+        return None
+    brief = build_brief(idea_profile)
+    if instruction:
+        brief += (
+            f"\n\nThe founder specifically asked: \"{instruction}\"\n"
+            "Prioritise that in your output — go deeper, add detail, and address it directly."
+        )
+    return await run_finn_module(module, brief)
+
+
+FINN_QA_SYSTEM = """You are Finn, a sharp London startup analyst answering a founder's
+question about the research you produced for their idea. You are given the idea
+profile and a compact summary of your own findings as JSON context.
+
+Answer in plain text (no JSON, no markdown headings). Be direct, specific and
+concise — 2 to 4 short sentences. Reference concrete numbers, areas, or
+competitors from the context where relevant. If the context doesn't contain the
+answer, say what you'd need to look into next. Never invent data you weren't given."""
+
+
+def _dashboard_digest(dashboard: dict) -> str:
+    """Compact JSON digest of the dashboard for Q&A context (keeps tokens low)."""
+    d = dashboard or {}
+    idea = d.get("idea") or {}
+    def names(lst, key="name", n=4):
+        return [x.get(key) for x in (lst or [])[:n] if isinstance(x, dict) and x.get(key)]
+    digest = {
+        "idea": {k: idea.get(k) for k in ("title", "subtitle", "business_type", "stage", "revenue") if idea.get(k)},
+        "segments": names(d.get("segments")),
+        "verdict": d.get("validation_verdict"),
+        "competition_level": d.get("competition_level"),
+        "openness_score": d.get("openness_score"),
+        "competitors": names(d.get("competitors")),
+        "locations": [
+            {"name": l.get("name"), "score": l.get("score")}
+            for l in (d.get("locations") or [])[:4] if isinstance(l, dict)
+        ],
+        "funding_readiness": d.get("funding_readiness"),
+        "grants": names(d.get("grants")),
+    }
+    return json.dumps({k: v for k, v in digest.items() if v}, ensure_ascii=False)
+
+
+async def answer_question(dashboard: dict, question: str) -> str:
+    """Finn answers a question about the generated insights. No mutation."""
+    context = f"CONTEXT:\n{_dashboard_digest(dashboard)}\n\nQUESTION: {question}"
+    return await chat_text(FINN_QA_SYSTEM, context, persona="finn", temperature=0.3, max_tokens=600)
 
 
 async def run_finn(idea_profile, conversation=None) -> dict:

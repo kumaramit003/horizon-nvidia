@@ -49,6 +49,42 @@ def _extract_json(text) -> dict:
     raise ValueError(f"No valid JSON found in LLM response: {text[:200]}...")
 
 
+async def chat_text(
+    system: str,
+    user: str,
+    *,
+    persona: str = "finn",
+    temperature: float = 0.4,
+    max_tokens: int = 700,
+) -> str:
+    """Plain-text completion (for Q&A answers, not structured JSON)."""
+    client = get_client(persona)
+    model = settings.llm_config_for(persona)["model"]
+    try:
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except Exception as e:
+        logger.error("LLM[%s] text call failed: %s", persona, e)
+        raise RuntimeError(f"LLM[{persona}] call failed: {e}") from e
+    raw, finish = _content_from(resp.choices[0])
+    if not raw and finish == "length":
+        # reasoning model ran out mid-think — retry with more room
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=temperature, max_tokens=max_tokens * 2,
+        )
+        raw, finish = _content_from(resp.choices[0])
+    return (raw or "").strip()
+
+
 def _content_from(choice) -> tuple[str | None, str | None]:
     """Pull text + finish_reason from a completion choice.
 
