@@ -80,6 +80,13 @@ export const api = {
     return request(`/discoveries/${id}/rerun`, { method: 'POST' })
   },
 
+  refineDiscovery(id, command, persona) {
+    return request(`/discoveries/${id}/refine`, {
+      method: 'POST',
+      body: JSON.stringify({ command, persona }),
+    })
+  },
+
   floraChat(conversation) {
     return request('/flora/chat', {
       method: 'POST',

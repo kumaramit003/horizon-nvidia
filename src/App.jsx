@@ -36,6 +36,7 @@ function AuthedApp({ user, onSignOut }) {
   const [stage, setStage] = useState('intake') // intake | dashboard
   const [page, setPage] = useState('idea')
   const [voiceOpen, setVoiceOpen] = useState(false)
+  const [voicePrefill, setVoicePrefill] = useState('')
   const [recentVoice, setRecentVoice] = useState(null)
 
   const [discoveryId, setDiscoveryId] = useState(null)
@@ -46,11 +47,25 @@ function AuthedApp({ user, onSignOut }) {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'v') {
         e.preventDefault()
+        setVoicePrefill('')
         setVoiceOpen(v => !v)
       }
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+
+    // Global event so any dashboard page (and the VoiceCommandBlock chips)
+    // can open the modal with a pre-filled command without prop drilling.
+    const onPrefill = (e) => {
+      const cmd = (e.detail || '').toString()
+      setVoicePrefill(cmd)
+      setVoiceOpen(true)
+    }
+    window.addEventListener('voice-prefill', onPrefill)
+
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('voice-prefill', onPrefill)
+    }
   }, [])
 
   // Restore existing session on mount
@@ -179,11 +194,24 @@ function AuthedApp({ user, onSignOut }) {
         </div>
       </main>
 
-      <VoiceFab onClick={() => setVoiceOpen(true)} />
+      <VoiceFab onClick={() => { setVoicePrefill(''); setVoiceOpen(true) }} />
       <VoiceAssistant
         open={voiceOpen}
         onClose={() => setVoiceOpen(false)}
-        onAppliedUpdate={(t) => setRecentVoice(t)}
+        prefill={voicePrefill}
+        discoveryId={discoveryId}
+        onRefineComplete={async (command) => {
+          setRecentVoice(command)
+          // Refresh the dashboard so the new sections render.
+          if (discoveryId) {
+            try {
+              const data = await api.getDashboard(discoveryId)
+              setDashboard(data)
+            } catch (e) {
+              console.warn('Failed to refresh dashboard after refine', e)
+            }
+          }
+        }}
       />
     </div>
   )

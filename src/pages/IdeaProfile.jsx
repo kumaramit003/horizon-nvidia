@@ -197,7 +197,7 @@ function Field({ icon: Icon, label, value }) {
       </span>
       <div className="min-w-0">
         <div className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500">{label}</div>
-        <div className="mt-0.5 truncate text-[13.5px] font-medium text-ink-900">{value}</div>
+        <div className="mt-0.5 text-[13px] font-medium leading-snug text-ink-900 line-clamp-2" title={typeof value === 'string' ? value : undefined}>{value}</div>
       </div>
     </div>
   )

@@ -119,6 +119,11 @@ export function RegenerateButton() {
 }
 
 export function VoiceCommandBlock({ commands, title = 'Try with your voice' }) {
+  const openWith = (cmd) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('voice-prefill', { detail: cmd }))
+    }
+  }
   return (
     <div className="card relative overflow-hidden p-6">
       <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full gradient-soft-peach opacity-70 blur-2xl" />
@@ -126,11 +131,12 @@ export function VoiceCommandBlock({ commands, title = 'Try with your voice' }) {
         <div className="section-eyebrow mb-2 flex items-center gap-1.5">
           <Sparkles size={11} className="text-peach-500" /> {title}
         </div>
-        <p className="text-[14px] text-ink-700">Tap the voice button — or try one of these.</p>
+        <p className="text-[14px] text-ink-700">Click a prompt below to open the voice panel pre-filled.</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {commands.map((c, i) => (
             <button
               key={i}
+              onClick={() => openWith(c)}
               className="rounded-full border border-peach-200 bg-peach-50 px-3.5 py-2 text-[12.5px] font-medium text-peach-600 transition-all hover:bg-peach-100"
             >
               "{c}"

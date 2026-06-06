@@ -116,10 +116,10 @@ You MUST respond with a single JSON object (no markdown, no explanation) with ex
   "title": "Short punchy name for the idea (5 words max)",
   "subtitle": "One-sentence description of what the business does and for whom",
   "description": "2-3 sentences of Flora's strategic recommendation for how to start",
-  "business_type": "Category · Sub-category (e.g. Food · B2B Catering)",
+  "business_type": "Category · Sub-category — max 4 words (e.g. 'Food · B2B Catering')",
   "stage": "One of: Idea | Pre-revenue | Early revenue | Growing",
-  "physical_site": "Whether they need a physical location and what Flora recommends",
-  "revenue": "Revenue streams separated by · (e.g. Catering · Subscriptions · Pop-ups)",
+  "physical_site": "VERY SHORT — max 6 words (e.g. 'Pop-up first, storefront later')",
+  "revenue": "Revenue streams separated by · — max 4 items (e.g. 'Catering · Subscriptions · Pop-ups')",
   "clarity_score": 0-100 integer representing overall founder clarity,
   "clarity_rows": [
     {"label": "Customer clarity", "value": 0-100, "level": "High|Medium|Low"},

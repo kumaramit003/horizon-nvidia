@@ -125,6 +125,65 @@ async def update_dashboard(discovery_id: str, updates: dict, user: Annotated[dic
     return {"ok": True}
 
 
+class RefineRequest(BaseModel):
+    command: str
+    persona: str | None = None  # "flora" | "finn" | None — informational only
+
+
+from pydantic import BaseModel  # noqa: E402  (used by RefineRequest above)
+
+
+@router.post("/{discovery_id}/refine")
+async def refine_discovery(
+    discovery_id: str,
+    body: RefineRequest,
+    user: Annotated[dict, Depends(current_user)],
+):
+    """Append a voice refinement to the intake and re-run the full pipeline."""
+    db = get_db()
+    oid = _oid(discovery_id)
+    doc = await db.discoveries.find_one({"_id": oid, "user_id": user["_id"]})
+    if not doc:
+        raise HTTPException(404, "Discovery not found")
+
+    command = (body.command or "").strip()
+    if not command:
+        raise HTTPException(400, "Empty command")
+
+    conversation = list((doc.get("intake") or {}).get("conversation") or [])
+    persona_tag = f"[{body.persona}] " if body.persona else ""
+    conversation.append({"speaker": "you", "text": f"{persona_tag}{command}"})
+
+    await db.discoveries.update_one(
+        {"_id": oid},
+        {"$set": {
+            "intake.conversation": conversation,
+            "status": "processing",
+            "updated_at": datetime.utcnow(),
+        }},
+    )
+
+    try:
+        dashboard = await run_discovery_pipeline(conversation)
+        title = ((dashboard.get("idea") or {}).get("title") or "").strip()
+        update = {
+            "dashboard": dashboard,
+            "status": "dashboard_ready",
+            "updated_at": datetime.utcnow(),
+        }
+        if title:
+            update["workspace_name"] = title[:80]
+        await db.discoveries.update_one({"_id": oid}, {"$set": update})
+    except Exception as e:
+        await db.discoveries.update_one(
+            {"_id": oid},
+            {"$set": {"status": "error", "error": str(e), "updated_at": datetime.utcnow()}},
+        )
+        raise HTTPException(500, f"Refine failed: {e}")
+
+    return {"ok": True, "id": discovery_id}
+
+
 @router.post("/{discovery_id}/rerun")
 async def rerun_discovery(discovery_id: str, user: Annotated[dict, Depends(current_user)]):
     """Re-run Flora analysis + Finn modules on the existing intake conversation."""

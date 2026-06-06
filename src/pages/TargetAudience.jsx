@@ -1,5 +1,5 @@
-import React from 'react'
-import { Users, MessageSquare, Building2, HeartPulse, CalendarDays, ArrowUpRight, Sparkles } from 'lucide-react'
+import React, { useState } from 'react'
+import { Users, MessageSquare, Building2, HeartPulse, CalendarDays, ArrowUpRight, Sparkles, Copy, Check } from 'lucide-react'
 import { Card, SectionHeader, Confidence, Tag, VoiceCommandBlock, AskWhyButton, SourceChip } from '../components/ui'
 
 const segments = [
@@ -163,17 +163,21 @@ export default function TargetAudience({ dashboard }) {
           <SectionHeader
             eyebrow="Customer discovery"
             title="Ten questions to ask 10 people this week"
-            right={<button className="btn-ghost text-[12.5px]"><MessageSquare size={12} /> Export script</button>}
+            right={
+              <button
+                className="btn-ghost text-[12.5px]"
+                onClick={() => {
+                  const all = _interviewQs.map((q, i) => `${i + 1}. ${q}`).join('\n')
+                  navigator.clipboard?.writeText(all)
+                }}
+              >
+                <MessageSquare size={12} /> Copy all
+              </button>
+            }
           />
           <ol className="space-y-2.5">
             {_interviewQs.map((q, i) => (
-              <li key={q} className="flex items-center gap-4 rounded-2xl bg-cream-50 px-4 py-3">
-                <span className="display grid h-8 w-8 place-items-center rounded-full bg-white text-[15px] text-ink-900 shadow-soft">
-                  {i + 1}
-                </span>
-                <span className="flex-1 text-[14px] text-ink-900">{q}</span>
-                <button className="btn-ghost !py-1 !px-2.5 text-[11.5px]">Send <ArrowUpRight size={11} /></button>
-              </li>
+              <InterviewQ key={q} q={q} idx={i} />
             ))}
           </ol>
         </Card>
@@ -187,6 +191,32 @@ export default function TargetAudience({ dashboard }) {
         />
       </div>
     </div>
+  )
+}
+
+function InterviewQ({ q, idx }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(q)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* ignore */ }
+  }
+  return (
+    <li className="flex items-center gap-4 rounded-2xl bg-cream-50 px-4 py-3">
+      <span className="display grid h-8 w-8 place-items-center rounded-full bg-white text-[15px] text-ink-900 shadow-soft">
+        {idx + 1}
+      </span>
+      <span className="flex-1 text-[14px] text-ink-900">{q}</span>
+      <button
+        onClick={copy}
+        className={`btn-ghost !py-1 !px-2.5 text-[11.5px] ${copied ? '!bg-sage-100 !text-forest-500 !border-sage-200' : ''}`}
+        title="Copy to clipboard"
+      >
+        {copied ? <><Check size={11} /> Copied</> : <><Copy size={11} /> Copy</>}
+      </button>
+    </li>
   )
 }
 
