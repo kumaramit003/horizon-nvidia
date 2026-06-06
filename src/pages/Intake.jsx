@@ -1,3 +1,31 @@
+import React, { useEffect, useRef, useState } from 'react'
+import { Mic, MicOff, Pause, Sparkles, ArrowRight, CornerDownLeft, Database, ExternalLink, Leaf } from 'lucide-react'
+import { Wordmark, LeafMark, Tagline } from '../components/Brand'
+import { speakWithElevenLabs } from '../lib/voiceApi'
+
+const CONVERSATION = [
+  { speaker: 'flora', text: "Hey — I'm Flora. Tell me the rough version of your idea. I'll ask the right questions so Finn can turn it into a real launch plan." },
+  { speaker: 'you',  text: "I want to open a halal healthy lunch and corporate catering business near Liverpool Street." },
+  { speaker: 'flora', text: "I love that. What made you think there's room for it — why this, why now?" },
+  { speaker: 'you',  text: "I'm Muslim, I work near there, and I can never find healthy halal lunch. My friends keep saying the same." },
+  { speaker: 'flora', text: "That's the best kind of idea — one you needed yourself. How are you imagining the first version?" },
+  { speaker: 'you',  text: "Probably a small storefront. But I'm flexible — I don't have a lot of money to start." },
+  { speaker: 'flora', text: "Honest answers help me protect you. Roughly what's the budget, and is this full-time or alongside a day job?" },
+  { speaker: 'you',  text: "Around £8 to 10k saved. I'd start it on the side and go full-time once I have customers." },
+  { speaker: 'flora', text: "Perfect — I have what I need. Passing the baton to Finn now. He'll read London for you and come back with a plan." },
+]
+
+const MOTIVATIONAL = [
+  "Every founder started exactly where you are.",
+  "There are no bad ideas — only ones that haven't been tested yet.",
+  "The first conversation is the hardest. You're doing it.",
+  "Speak the way you'd speak to a friend who believes in you.",
+  "Clarity isn't a prerequisite. It's the output.",
+  "I'll listen for what you don't say.",
+  "Tell me what excites you, not what sounds smart.",
+  "You're closer than you think.",
+  "Finn's listening in the background — already crunching the numbers.",
+]
 import React, { useEffect, useState, useRef } from 'react'
 import { Send, ArrowRight, Database, ExternalLink, Leaf } from 'lucide-react'
 import { Wordmark, LeafMark, Tagline } from '../components/Brand'
@@ -60,6 +88,14 @@ function GatheredPips({ gathered }) {
 }
 
 export default function Intake({ onComplete }) {
+  const [started, setStarted] = useState(false)
+  const [turn, setTurn] = useState(0)
+  const [typed, setTyped] = useState('')
+  const [orbState, setOrbState] = useState('listening')
+  const [analysing, setAnalysing] = useState(false)
+  const [analysisDone, setAnalysisDone] = useState(false)
+  const [voiceError, setVoiceError] = useState('')
+  const spokenTurnRef = useRef(null)
   const [conversation, setConversation] = useState([])
   const [floraMessage, setFloraMessage] = useState('')
   const [floraTyped, setFloraTyped] = useState('')
@@ -93,6 +129,33 @@ export default function Intake({ onComplete }) {
 
   // Typewriter effect when Flora has a new message
   useEffect(() => {
+    if (!started) return
+    if (turn >= CONVERSATION.length) return
+    const msg = CONVERSATION[turn]
+    const controller = new AbortController()
+    let audio
+    let audioUrl
+
+    if (msg.speaker === 'flora' && spokenTurnRef.current !== turn) {
+      spokenTurnRef.current = turn
+      setVoiceError('')
+      speakWithElevenLabs({
+        text: msg.text,
+        persona: 'flora',
+        signal: controller.signal,
+      })
+        .then(blob => {
+          audioUrl = URL.createObjectURL(blob)
+          audio = new Audio(audioUrl)
+          return audio.play()
+        })
+        .catch(error => {
+          if (error.name !== 'AbortError') setVoiceError(error.message)
+        })
+    }
+
+    setOrbState(msg.speaker === 'flora' ? 'speaking' : 'listening')
+    setTyped('')
     if (!floraMessage || floraThinking) return
     setFloraTyping(true)
     setFloraTyped('')
@@ -105,6 +168,14 @@ export default function Intake({ onComplete }) {
         setFloraTyping(false)
         setTimeout(() => inputRef.current?.focus(), 100)
       }
+    }, speed)
+    return () => {
+      clearInterval(interval)
+      controller.abort()
+      if (audio) audio.pause()
+      if (audioUrl) URL.revokeObjectURL(audioUrl)
+    }
+  }, [started, turn])
     }, 20)
     return () => clearInterval(interval)
   }, [floraMessage, floraThinking])
@@ -195,6 +266,10 @@ export default function Intake({ onComplete }) {
         </a>
       </header>
 
+      <main className="relative z-10 mx-auto flex min-h-[calc(100vh-90px)] max-w-[760px] flex-col items-center justify-center px-6 pb-16 pt-6 text-center">
+        {!started ? (
+          <StartVoice onStart={() => setStarted(true)} />
+        ) : !analysisDone ? (
       <main className="relative z-10 mx-auto flex min-h-[calc(100vh-90px)] max-w-[760px] flex-col items-center justify-center px-6 pb-16 pt-6">
         {pipelineDone ? (
           <Ready />
@@ -248,6 +323,17 @@ export default function Intake({ onComplete }) {
               </div>
             )}
 
+                {voiceError && (
+                  <div className="mt-4 rounded-full border border-butter-200 bg-butter-100 px-4 py-2 text-[12px] text-ink-700">
+                    ElevenLabs voice skipped: {voiceError}
+                  </div>
+                )}
+
+                <div className="mt-8 flex items-center gap-2">
+                  <button className="btn-ghost text-[12.5px]"><Pause size={12} /> Pause</button>
+                  <button className="btn-ghost text-[12.5px]"><CornerDownLeft size={12} /> Type instead</button>
+                  <button className="btn-ghost text-[12.5px]"><MicOff size={12} /> Mute</button>
+                </div>
             {floraThinking && (
               <div className="mt-8 flex items-center gap-2 text-[13px] text-ink-400">
                 <span className="inline-flex gap-1">
@@ -293,6 +379,39 @@ export default function Intake({ onComplete }) {
       <style>{`
         @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
       `}</style>
+    </div>
+  )
+}
+
+function StartVoice({ onStart }) {
+  return (
+    <div className="relative mx-auto flex w-full max-w-[620px] flex-col items-center text-center">
+      <span className="pointer-events-none absolute -top-20 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
+      <div className="relative grid h-24 w-24 place-items-center rounded-[2rem] gradient-orb-flora shadow-lift">
+        <LeafMark size={32} className="opacity-95 drop-shadow" />
+        <span className="absolute inset-0 animate-ringOut rounded-[2rem] border border-peach-200/60" />
+      </div>
+
+      <div className="relative mt-8 section-eyebrow flex items-center gap-2">
+        <Sparkles size={12} className="text-peach-500" />
+        Voice discovery
+      </div>
+      <h1 className="relative mt-3 display text-[52px] leading-[1.04] tracking-tight text-forest-500">
+        Start with <span className="italic-accent text-peach-500">Flora.</span>
+      </h1>
+      <p className="relative mt-4 max-w-[520px] text-[15.5px] leading-relaxed text-ink-500">
+        Tap once to begin the voice demo. Flora will speak the opening intake, then Finn will prepare the dashboard.
+      </p>
+
+      <button
+        onClick={onStart}
+        className="relative mt-9 inline-flex items-center gap-2 rounded-full bg-forest-500 px-7 py-3.5 text-[14.5px] font-medium text-cream-50 shadow-lift transition-all hover:scale-[1.02] hover:bg-forest-600"
+      >
+        <Mic size={16} />
+        Start voice intake
+      </button>
+
+      <Tagline block className="relative mt-12" />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { Mic, X, Sparkles, ArrowRight, Check } from 'lucide-react'
+import { X, Sparkles, ArrowRight, Check } from 'lucide-react'
 import { LeafMark } from './Brand'
+import { speakWithElevenLabs } from '../lib/voiceApi'
 
 const SCRIPT_PROMPT = "Finn, I only have £5k and I want to avoid a storefront."
 const SCRIPT_RESPONSE = "Got it. I'll switch the plan to a lean route: pre-orders, rented kitchen hours, and corporate catering pilots. Liverpool Street stays as a B2B sales target — not a place to sign a lease."
@@ -41,12 +42,14 @@ export default function VoiceAssistant({ open, onClose, onAppliedUpdate }) {
   const [phase, setPhase] = useState('listening')
   const [typedTranscript, setTypedTranscript] = useState('')
   const [typedResponse, setTypedResponse] = useState('')
+  const [voiceError, setVoiceError] = useState('')
 
   useEffect(() => {
     if (!open) return
     setPhase('listening')
     setTypedTranscript('')
     setTypedResponse('')
+    setVoiceError('')
     let i = 0
     const t1 = setInterval(() => {
       i++
@@ -67,6 +70,23 @@ export default function VoiceAssistant({ open, onClose, onAppliedUpdate }) {
 
   useEffect(() => {
     if (phase !== 'responding') return
+    const controller = new AbortController()
+    let audioUrl
+
+    speakWithElevenLabs({
+      text: SCRIPT_RESPONSE,
+      persona: 'finn',
+      signal: controller.signal,
+    })
+      .then(blob => {
+        audioUrl = URL.createObjectURL(blob)
+        const audio = new Audio(audioUrl)
+        audio.play().catch(() => {})
+      })
+      .catch(error => {
+        if (error.name !== 'AbortError') setVoiceError(error.message)
+      })
+
     let i = 0
     const t = setInterval(() => {
       i++
@@ -76,7 +96,11 @@ export default function VoiceAssistant({ open, onClose, onAppliedUpdate }) {
         setTimeout(() => setPhase('applied'), 350)
       }
     }, 16)
-    return () => clearInterval(t)
+    return () => {
+      clearInterval(t)
+      controller.abort()
+      if (audioUrl) URL.revokeObjectURL(audioUrl)
+    }
   }, [phase])
 
   useEffect(() => {
@@ -138,6 +162,11 @@ export default function VoiceAssistant({ open, onClose, onAppliedUpdate }) {
             <div className="rounded-2xl gradient-soft-mint px-3.5 py-3 text-[14px] leading-relaxed text-forest-500">
               {typedResponse}
               {phase === 'responding' && <span className="ml-0.5 inline-block h-4 w-[2px] animate-cursor bg-forest-500 align-middle" />}
+            </div>
+          )}
+          {voiceError && (
+            <div className="mt-2 rounded-full border border-butter-200 bg-butter-100 px-3 py-1.5 text-[11.5px] text-ink-700">
+              ElevenLabs voice skipped: {voiceError}
             </div>
           )}
         </div>
