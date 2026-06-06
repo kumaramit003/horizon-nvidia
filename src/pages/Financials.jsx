@@ -36,7 +36,7 @@ export default function Financials() {
         <SectionHeader
           eyebrow="Four ways to start"
           title="Pick the budget shape that fits your life"
-          description="Indicative bands — voice your real number and Jill will recalculate."
+          description="Indicative bands — voice your real number and Finn will recalculate."
           right={<AskWhyButton>Change currency</AskWhyButton>}
         />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

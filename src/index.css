@@ -45,6 +45,12 @@ body {
   .btn-coral {
     @apply btn bg-peach-500 text-white shadow-[0_8px_20px_-8px_rgba(255,107,61,0.5)] hover:bg-peach-600;
   }
+  .btn-forest {
+    @apply btn bg-forest-500 text-cream-50 shadow-[0_8px_20px_-8px_rgba(40,66,40,0.5)] hover:bg-forest-600;
+  }
+  .btn-sage {
+    @apply btn bg-sage-500 text-cream-50 shadow-[0_8px_20px_-8px_rgba(110,139,106,0.4)] hover:bg-sage-600;
+  }
   .btn-ghost {
     @apply btn border border-black/[0.08] bg-white text-ink-700 hover:bg-cream-50;
   }
@@ -70,10 +76,25 @@ body {
 
 .gradient-orb {
   background:
-    radial-gradient(circle at 30% 30%, #FFD2B0 0%, transparent 55%),
-    radial-gradient(circle at 70% 60%, #B19BFF 0%, transparent 55%),
-    radial-gradient(circle at 50% 80%, #FFD659 0%, transparent 55%),
-    linear-gradient(135deg, #FF9259, #FF6B3D);
+    radial-gradient(circle at 30% 25%, #FFD2B0 0%, transparent 55%),
+    radial-gradient(circle at 75% 65%, #C5B5FF 0%, transparent 55%),
+    radial-gradient(circle at 50% 80%, #C5D5C0 0%, transparent 55%),
+    linear-gradient(135deg, #6E8B6A 0%, #3F5E3F 70%);
+}
+/* Flora — Discovery. Warm, feminine, soft. Peach + lavender + cream. */
+.gradient-orb-flora {
+  background:
+    radial-gradient(circle at 30% 25%, #FFE9D6 0%, transparent 55%),
+    radial-gradient(circle at 75% 70%, #E8E0FF 0%, transparent 55%),
+    radial-gradient(circle at 50% 80%, #FFB582 0%, transparent 60%),
+    linear-gradient(135deg, #FF9259 0%, #FF6B3D 100%);
+}
+/* Finn — Research & Planning. Grounded, strong, structured. Deep forest + sage. */
+.gradient-orb-finn {
+  background:
+    radial-gradient(circle at 30% 30%, #C5D5C0 0%, transparent 55%),
+    radial-gradient(circle at 75% 75%, #8FA68C 0%, transparent 55%),
+    linear-gradient(135deg, #3F5E3F 0%, #1B2F1C 100%);
 }
 
 .gradient-soft-peach { background: linear-gradient(135deg, #FFE9D6 0%, #FFD2B0 100%); }
@@ -88,16 +109,29 @@ body {
   background-size: 22px 22px;
 }
 
-.bg-mesh {
-  background:
-    radial-gradient(800px 600px at -10% -10%, rgba(255,210,176,0.35), transparent 60%),
-    radial-gradient(900px 700px at 110% 0%, rgba(177,155,255,0.28), transparent 60%),
-    radial-gradient(700px 500px at 50% 110%, rgba(255,214,89,0.25), transparent 55%),
-    #F7F3EC;
-}
-
 .italic-accent {
   font-family: 'Instrument Serif', Georgia, serif;
   font-style: italic;
   font-weight: 400;
+}
+
+.bg-mesh {
+  background:
+    radial-gradient(900px 700px at -10% -10%, rgba(255,210,176,0.32), transparent 60%),
+    radial-gradient(1000px 800px at 110% 0%, rgba(177,155,255,0.22), transparent 60%),
+    radial-gradient(800px 600px at 50% 110%, rgba(197,213,192,0.30), transparent 55%),
+    #F7F3EC;
+}
+
+/* small organic leaf accent */
+.leaf-bullet::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 11px;
+  margin-right: 6px;
+  background: linear-gradient(135deg, #8FA68C, #3F5E3F);
+  border-radius: 0 100% 0 100%;
+  transform: rotate(-12deg);
+  vertical-align: -1px;
 }

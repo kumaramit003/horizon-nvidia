@@ -146,7 +146,7 @@ export default function Locations() {
             </div>
 
             <div className="mt-5 rounded-2xl border border-peach-200 bg-peach-50 p-4">
-              <Tag kind="Recommended">Jill's call</Tag>
+              <Tag kind="Recommended">Finn's call</Tag>
               <p className="mt-2 text-[14px] leading-relaxed text-ink-900">
                 Target Liverpool Street for B2B sales — but operate from a <span className="italic-accent text-peach-500">lower-cost kitchen or pop-up</span> before ever opening a storefront.
               </p>

@@ -47,7 +47,7 @@ export default function IdeaProfile() {
                 Halal Healthy Lunch <span className="italic-accent text-peach-500">&amp;</span> Catering
               </h2>
               <p className="mt-3 max-w-[60ch] text-[16px] leading-relaxed text-ink-500">
-                A halal, health-focused lunch and corporate catering service for office workers around <span className="text-ink-900">Liverpool Street</span>. Jill suggests starting with B2B pre-orders and a pop-up before signing any lease.
+                A halal, health-focused lunch and corporate catering service for office workers around <span className="text-forest-500">Liverpool Street</span>. Flora captured the idea; Finn suggests starting with B2B pre-orders and a pop-up before signing any lease.
               </p>
 
               <div className="mt-6 grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
@@ -81,17 +81,17 @@ export default function IdeaProfile() {
         </div>
       </section>
 
-      {/* Jill's note */}
+      {/* Flora's note */}
       <Card className="relative overflow-hidden !p-7">
-        <div className="absolute -left-10 top-1/2 -translate-y-1/2 h-48 w-48 rounded-full gradient-soft-lavender opacity-50 blur-2xl" />
+        <div className="absolute -left-10 top-1/2 -translate-y-1/2 h-48 w-48 rounded-full gradient-soft-peach opacity-50 blur-2xl" />
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl gradient-orb shadow-soft">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl gradient-orb-flora shadow-soft">
             <Quote size={18} className="text-white" />
           </span>
           <div className="flex-1">
-            <div className="section-eyebrow mb-1.5">Jill's read on the idea</div>
-            <p className="display text-[22px] leading-snug text-ink-900">
-              "It's a real personal pain in a high-density office patch — that's a strong starting point. The risk isn't whether people want lunch. It's whether <span className="italic-accent text-peach-500">they'll keep choosing you over the place next door.</span>"
+            <div className="section-eyebrow mb-1.5">Flora's read on the idea</div>
+            <p className="display text-[22px] leading-snug text-forest-500">
+              "It's a real personal pain in a high-density office patch — that's a strong starting point. The risk isn't whether people want lunch. It's whether <span className="italic-accent text-sage-500">they'll keep choosing you over the place next door.</span>"
             </p>
           </div>
           <AskWhyButton>What changed?</AskWhyButton>
@@ -125,7 +125,7 @@ export default function IdeaProfile() {
         <Card className="!p-7">
           <SectionHeader
             eyebrow="Assumptions"
-            title="What Jill is currently believing"
+            title="What Flora is currently believing"
             description="Accept, edit or challenge. The plan updates."
             right={<AskWhyButton />}
           />
@@ -147,7 +147,7 @@ export default function IdeaProfile() {
           <SectionHeader
             eyebrow="Open questions"
             title="Answer these to push clarity to 90%"
-            right={<button className="btn-text">Ask Jill in voice <Mic size={12} /></button>}
+            right={<button className="btn-text">Ask Flora in voice <Mic size={12} /></button>}
           />
           <ul className="divide-y divide-black/[0.05]">
             {openQuestions.map((q, i) => (
