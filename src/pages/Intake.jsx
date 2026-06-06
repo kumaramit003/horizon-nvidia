@@ -1,45 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Mic, MicOff, Pause, Sparkles, ArrowRight, CornerDownLeft, Database, ExternalLink, Leaf } from 'lucide-react'
-import { Wordmark, LeafMark, Tagline } from '../components/Brand'
-import { speakWithElevenLabs } from '../lib/voiceApi'
-
-const CONVERSATION = [
-  { speaker: 'flora', text: "Hey — I'm Flora. Tell me the rough version of your idea. I'll ask the right questions so Finn can turn it into a real launch plan." },
-  { speaker: 'you',  text: "I want to open a halal healthy lunch and corporate catering business near Liverpool Street." },
-  { speaker: 'flora', text: "I love that. What made you think there's room for it — why this, why now?" },
-  { speaker: 'you',  text: "I'm Muslim, I work near there, and I can never find healthy halal lunch. My friends keep saying the same." },
-  { speaker: 'flora', text: "That's the best kind of idea — one you needed yourself. How are you imagining the first version?" },
-  { speaker: 'you',  text: "Probably a small storefront. But I'm flexible — I don't have a lot of money to start." },
-  { speaker: 'flora', text: "Honest answers help me protect you. Roughly what's the budget, and is this full-time or alongside a day job?" },
-  { speaker: 'you',  text: "Around £8 to 10k saved. I'd start it on the side and go full-time once I have customers." },
-  { speaker: 'flora', text: "Perfect — I have what I need. Passing the baton to Finn now. He'll read London for you and come back with a plan." },
-]
-
-const MOTIVATIONAL = [
-  "Every founder started exactly where you are.",
-  "There are no bad ideas — only ones that haven't been tested yet.",
-  "The first conversation is the hardest. You're doing it.",
-  "Speak the way you'd speak to a friend who believes in you.",
-  "Clarity isn't a prerequisite. It's the output.",
-  "I'll listen for what you don't say.",
-  "Tell me what excites you, not what sounds smart.",
-  "You're closer than you think.",
-  "Finn's listening in the background — already crunching the numbers.",
-]
-import React, { useEffect, useState, useRef } from 'react'
-import { Send, ArrowRight, Database, ExternalLink, Leaf } from 'lucide-react'
+import {
+  Mic, MicOff, Pause, Sparkles, ArrowRight, CornerDownLeft, Send,
+  Database, ExternalLink, Leaf,
+} from 'lucide-react'
 import { Wordmark, LeafMark, Tagline } from '../components/Brand'
 import { api } from '../lib/api'
+import { speakWithElevenLabs } from '../lib/voiceApi'
+
+// ─── Visuals ────────────────────────────────────────────────────────────────
 
 function Orb({ state, who = 'flora' }) {
   const grad = who === 'flora' ? 'gradient-orb-flora' : 'gradient-orb-finn'
   return (
-    <div className="relative grid place-items-center" style={{ width: 200, height: 200 }}>
+    <div className="relative grid place-items-center" style={{ width: 220, height: 220 }}>
       <span className={`absolute inset-0 rounded-full ${grad} opacity-20 blur-3xl animate-breathe`} />
       <span className={`absolute inset-4 rounded-full ${grad} opacity-40 blur-2xl animate-breathe`} style={{ animationDelay: '500ms' }} />
-      <span className={`absolute inset-8 rounded-full ${grad} opacity-95 blur-[1px] animate-breathe`} style={{ animationDelay: '200ms' }} />
+      <span className={`absolute inset-9 rounded-full ${grad} opacity-95 blur-[1px] animate-breathe`} style={{ animationDelay: '200ms' }} />
       <span className={`absolute inset-12 rounded-full ${grad} shadow-[inset_0_8px_30px_rgba(255,255,255,0.45),inset_0_-30px_50px_rgba(27,47,28,0.35)]`} />
-      <span className="absolute inset-[60px] rounded-full bg-white/30 backdrop-blur-sm" />
+      <span className="absolute inset-[68px] rounded-full bg-white/30 backdrop-blur-sm" />
 
       {state !== 'idle' && (
         <>
@@ -49,11 +27,12 @@ function Orb({ state, who = 'flora' }) {
       )}
 
       <div className="relative flex flex-col items-center text-white">
-        <LeafMark size={20} className="opacity-95 drop-shadow" />
+        <LeafMark size={22} className="opacity-95 drop-shadow" />
         <div className="mt-1.5 text-[9.5px] font-medium uppercase tracking-[0.22em] text-white/90">
           {state === 'thinking' ? (who === 'flora' ? 'Flora thinking' : 'Finn working') :
-           state === 'speaking' ? 'Flora speaking' :
-           state === 'waiting'  ? 'Your turn' : 'Flora'}
+           state === 'speaking' ? (who === 'flora' ? 'Flora speaking' : 'Finn speaking') :
+           state === 'waiting'  ? 'Your turn' :
+           who === 'flora' ? 'Flora' : 'Finn'}
         </div>
       </div>
     </div>
@@ -71,7 +50,7 @@ function GatheredPips({ gathered }) {
   ]
   const done = fields.filter(f => gathered?.[f.key]).length
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-3">
       {fields.map(f => (
         <div key={f.key} className="flex flex-col items-center gap-1">
           <span className={`h-2 w-2 rounded-full transition-all duration-500 ${
@@ -82,36 +61,33 @@ function GatheredPips({ gathered }) {
           }`}>{f.label}</span>
         </div>
       ))}
-      <span className="ml-3 text-[11px] font-mono text-ink-400">{done}/6</span>
+      <span className="ml-2 text-[11px] font-mono text-ink-400">{done}/6</span>
     </div>
   )
 }
 
+// ─── Page ───────────────────────────────────────────────────────────────────
+
 export default function Intake({ onComplete }) {
   const [started, setStarted] = useState(false)
-  const [turn, setTurn] = useState(0)
-  const [typed, setTyped] = useState('')
-  const [orbState, setOrbState] = useState('listening')
-  const [analysing, setAnalysing] = useState(false)
-  const [analysisDone, setAnalysisDone] = useState(false)
-  const [voiceError, setVoiceError] = useState('')
-  const spokenTurnRef = useRef(null)
   const [conversation, setConversation] = useState([])
   const [floraMessage, setFloraMessage] = useState('')
   const [floraTyped, setFloraTyped] = useState('')
   const [floraTyping, setFloraTyping] = useState(false)
-  const [floraThinking, setFloraThinking] = useState(true)
+  const [floraThinking, setFloraThinking] = useState(false)
   const [gathered, setGathered] = useState({})
   const [userInput, setUserInput] = useState('')
   const [analysing, setAnalysing] = useState(false)
   const [pipelineDone, setPipelineDone] = useState(false)
   const [error, setError] = useState(null)
-  const [turnCount, setTurnCount] = useState(0)
+  const [voiceError, setVoiceError] = useState('')
   const inputRef = useRef(null)
   const chatEndRef = useRef(null)
+  const spokenMessageRef = useRef(null)
 
-  // On mount, get Flora's opening message
+  // ── Flora's opening turn ──
   useEffect(() => {
+    if (!started) return
     let cancelled = false
     setFloraThinking(true)
     api.floraChat([])
@@ -125,37 +101,10 @@ export default function Intake({ onComplete }) {
         if (!cancelled) setError(err.message)
       })
     return () => { cancelled = true }
-  }, [])
+  }, [started])
 
-  // Typewriter effect when Flora has a new message
+  // ── Typewriter effect for each new Flora message ──
   useEffect(() => {
-    if (!started) return
-    if (turn >= CONVERSATION.length) return
-    const msg = CONVERSATION[turn]
-    const controller = new AbortController()
-    let audio
-    let audioUrl
-
-    if (msg.speaker === 'flora' && spokenTurnRef.current !== turn) {
-      spokenTurnRef.current = turn
-      setVoiceError('')
-      speakWithElevenLabs({
-        text: msg.text,
-        persona: 'flora',
-        signal: controller.signal,
-      })
-        .then(blob => {
-          audioUrl = URL.createObjectURL(blob)
-          audio = new Audio(audioUrl)
-          return audio.play()
-        })
-        .catch(error => {
-          if (error.name !== 'AbortError') setVoiceError(error.message)
-        })
-    }
-
-    setOrbState(msg.speaker === 'flora' ? 'speaking' : 'listening')
-    setTyped('')
     if (!floraMessage || floraThinking) return
     setFloraTyping(true)
     setFloraTyped('')
@@ -168,19 +117,39 @@ export default function Intake({ onComplete }) {
         setFloraTyping(false)
         setTimeout(() => inputRef.current?.focus(), 100)
       }
-    }, speed)
-    return () => {
-      clearInterval(interval)
-      controller.abort()
-      if (audio) audio.pause()
-      if (audioUrl) URL.revokeObjectURL(audioUrl)
-    }
-  }, [started, turn])
     }, 20)
     return () => clearInterval(interval)
   }, [floraMessage, floraThinking])
 
-  // Scroll chat history when it updates
+  // ── Speak each Flora message via ElevenLabs (best-effort, never blocks) ──
+  useEffect(() => {
+    if (!floraMessage || floraThinking) return
+    if (spokenMessageRef.current === floraMessage) return
+    spokenMessageRef.current = floraMessage
+
+    const controller = new AbortController()
+    let audio
+    let audioUrl
+
+    setVoiceError('')
+    speakWithElevenLabs({ text: floraMessage, persona: 'flora', signal: controller.signal })
+      .then(blob => {
+        audioUrl = URL.createObjectURL(blob)
+        audio = new Audio(audioUrl)
+        return audio.play()
+      })
+      .catch(err => {
+        if (err.name !== 'AbortError') setVoiceError(err.message)
+      })
+
+    return () => {
+      controller.abort()
+      if (audio) audio.pause()
+      if (audioUrl) URL.revokeObjectURL(audioUrl)
+    }
+  }, [floraMessage, floraThinking])
+
+  // ── Scroll chat history ──
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [conversation])
@@ -198,25 +167,18 @@ export default function Intake({ onComplete }) {
       { speaker: 'you', text: answer },
     ]
     setConversation(updated)
-    setTurnCount(t => t + 1)
 
-    // Ask Flora for next question
     setFloraThinking(true)
     try {
       const res = await api.floraChat(updated)
       setGathered(res.gathered || {})
 
       if (res.done) {
-        // Flora is done — add her handoff message and start the pipeline
-        const finalConvo = [
-          ...updated,
-          { speaker: 'flora', text: res.message },
-        ]
+        const finalConvo = [...updated, { speaker: 'flora', text: res.message }]
         setConversation(finalConvo)
         setFloraMessage(res.message)
         setFloraThinking(false)
-
-        // Small delay for the handoff message to display, then start pipeline
+        // Small delay so the handoff message renders + plays before pipeline starts
         setTimeout(() => {
           setAnalysing(true)
           onComplete(finalConvo)
@@ -232,6 +194,7 @@ export default function Intake({ onComplete }) {
     }
   }
 
+  // ── Error state ──
   if (error) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-mesh">
@@ -239,7 +202,7 @@ export default function Intake({ onComplete }) {
           <div className="grid h-16 w-16 mx-auto place-items-center rounded-3xl bg-rose-100">
             <span className="text-rose-500 text-2xl">!</span>
           </div>
-          <h2 className="mt-6 display text-[28px] text-ink-900">Something went wrong</h2>
+          <h2 className="mt-6 display text-[28px] text-forest-500">Something went wrong</h2>
           <p className="mt-3 text-[14px] text-ink-500 leading-relaxed">{error}</p>
           <button
             onClick={() => window.location.reload()}
@@ -252,6 +215,7 @@ export default function Intake({ onComplete }) {
     )
   }
 
+  // ── Page shell ──
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-mesh">
       <div className="pointer-events-none absolute inset-0 dot-grid opacity-50" />
@@ -266,20 +230,18 @@ export default function Intake({ onComplete }) {
         </a>
       </header>
 
-      <main className="relative z-10 mx-auto flex min-h-[calc(100vh-90px)] max-w-[760px] flex-col items-center justify-center px-6 pb-16 pt-6 text-center">
+      <main className="relative z-10 mx-auto flex min-h-[calc(100vh-90px)] max-w-[760px] flex-col items-center justify-center px-6 pb-16 pt-6">
         {!started ? (
           <StartVoice onStart={() => setStarted(true)} />
-        ) : !analysisDone ? (
-      <main className="relative z-10 mx-auto flex min-h-[calc(100vh-90px)] max-w-[760px] flex-col items-center justify-center px-6 pb-16 pt-6">
-        {pipelineDone ? (
+        ) : pipelineDone ? (
           <Ready />
         ) : analysing ? (
           <>
             <Orb state="thinking" who="finn" />
-            <div className="mt-5 text-[11.5px] font-medium uppercase tracking-[0.18em] text-ink-500">
-              Flora & Finn are building your plan
+            <div className="mt-5 text-[11.5px] font-medium uppercase tracking-[0.18em] text-ink-500 text-center">
+              Flora &amp; Finn are building your plan
             </div>
-            <div className="mt-8 max-w-[640px]"><Analysing /></div>
+            <div className="mt-8 w-full max-w-[640px]"><Analysing /></div>
           </>
         ) : (
           <>
@@ -289,19 +251,17 @@ export default function Intake({ onComplete }) {
             />
 
             <div className="mt-4 text-[11px] font-medium uppercase tracking-[0.18em] text-ink-500">
-              {floraThinking ? 'Flora is thinking...' : floraTyping ? 'Flora is speaking' : 'Your turn · type below'}
+              {floraThinking ? 'Flora is thinking…' : floraTyping ? 'Flora is speaking' : 'Your turn · type below'}
             </div>
 
-            {/* Gathered context pips */}
             <div className="mt-4">
               <GatheredPips gathered={gathered} />
             </div>
 
-            {/* Chat history */}
             {conversation.length > 0 && (
-              <div className="mt-5 w-full max-w-[600px] max-h-[180px] overflow-y-auto rounded-2xl bg-white/60 backdrop-blur border border-black/[0.05] px-5 py-4 space-y-3">
+              <div className="mt-5 w-full max-w-[600px] max-h-[200px] overflow-y-auto rounded-2xl bg-white/60 backdrop-blur border border-black/[0.05] px-5 py-4 space-y-3">
                 {conversation.map((msg, i) => (
-                  <div key={i} className={`text-[13px] ${msg.speaker === 'flora' ? 'text-sage-600' : 'text-ink-900'}`}>
+                  <div key={i} className={`text-[13px] ${msg.speaker === 'flora' ? 'text-sage-600' : 'text-forest-500'}`}>
                     <span className="font-semibold text-[10px] uppercase tracking-wider">
                       {msg.speaker === 'flora' ? 'Flora' : 'You'}
                     </span>
@@ -312,9 +272,8 @@ export default function Intake({ onComplete }) {
               </div>
             )}
 
-            {/* Flora's current message */}
             {!floraThinking && (
-              <div className="mt-5 max-w-[600px] w-full text-center animate-[fadeIn_0.4s_ease]">
+              <div className="mt-5 w-full max-w-[640px] text-center animate-[fadeIn_0.4s_ease]">
                 <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-sage-500 mb-2">Flora</div>
                 <p className="display text-[24px] leading-[1.25] text-forest-500">
                   {floraTyped}
@@ -323,19 +282,14 @@ export default function Intake({ onComplete }) {
               </div>
             )}
 
-                {voiceError && (
-                  <div className="mt-4 rounded-full border border-butter-200 bg-butter-100 px-4 py-2 text-[12px] text-ink-700">
-                    ElevenLabs voice skipped: {voiceError}
-                  </div>
-                )}
+            {voiceError && (
+              <div className="mt-4 rounded-full border border-butter-200 bg-butter-100 px-4 py-1.5 text-[11.5px] text-ink-700">
+                Voice unavailable: {voiceError}
+              </div>
+            )}
 
-                <div className="mt-8 flex items-center gap-2">
-                  <button className="btn-ghost text-[12.5px]"><Pause size={12} /> Pause</button>
-                  <button className="btn-ghost text-[12.5px]"><CornerDownLeft size={12} /> Type instead</button>
-                  <button className="btn-ghost text-[12.5px]"><MicOff size={12} /> Mute</button>
-                </div>
             {floraThinking && (
-              <div className="mt-8 flex items-center gap-2 text-[13px] text-ink-400">
+              <div className="mt-6 flex items-center gap-2 text-[13px] text-ink-400">
                 <span className="inline-flex gap-1">
                   <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" />
                   <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '150ms' }} />
@@ -344,8 +298,7 @@ export default function Intake({ onComplete }) {
               </div>
             )}
 
-            {/* User input */}
-            {!floraTyping && !floraThinking && !analysing && (
+            {!floraTyping && !floraThinking && (
               <form onSubmit={handleSubmit} className="mt-6 w-full max-w-[560px] animate-[fadeIn_0.4s_ease]">
                 <div className="flex items-center gap-3 rounded-2xl border border-sage-200 bg-white px-5 py-3 shadow-soft focus-within:border-sage-400 focus-within:ring-2 focus-within:ring-sage-200 transition-all">
                   <input
@@ -353,8 +306,8 @@ export default function Intake({ onComplete }) {
                     type="text"
                     value={userInput}
                     onChange={(e) => setUserInput(e.target.value)}
-                    placeholder="Type your answer..."
-                    className="flex-1 bg-transparent text-[15px] text-ink-900 placeholder:text-ink-300 outline-none"
+                    placeholder="Type your answer…"
+                    className="flex-1 bg-transparent text-[15px] text-forest-500 placeholder:text-ink-300 outline-none"
                     autoFocus
                   />
                   <button
@@ -366,12 +319,12 @@ export default function Intake({ onComplete }) {
                   </button>
                 </div>
                 <div className="mt-2 text-center text-[11px] text-ink-400">
-                  Press Enter to send · Turn {turnCount + 1}
+                  Press Enter to send
                 </div>
               </form>
             )}
 
-            <Tagline className="mt-8 opacity-80" block />
+            <Tagline className="mt-10 opacity-80" block />
           </>
         )}
       </main>
@@ -382,6 +335,8 @@ export default function Intake({ onComplete }) {
     </div>
   )
 }
+
+// ─── States ────────────────────────────────────────────────────────────────
 
 function StartVoice({ onStart }) {
   return (
@@ -400,7 +355,7 @@ function StartVoice({ onStart }) {
         Start with <span className="italic-accent text-peach-500">Flora.</span>
       </h1>
       <p className="relative mt-4 max-w-[520px] text-[15.5px] leading-relaxed text-ink-500">
-        Tap once to begin the voice demo. Flora will speak the opening intake, then Finn will prepare the dashboard.
+        Tap once to begin. Flora will speak the opening intake, then Finn will read London and prepare your dashboard.
       </p>
 
       <button
@@ -437,7 +392,7 @@ function Analysing() {
   return (
     <div className="text-center">
       <p className="display text-[26px] leading-[1.2] text-forest-500">
-        Give me a moment. <span className="italic-accent text-sage-500">Flora & Finn are working for you.</span>
+        Give me a moment. <span className="italic-accent text-sage-500">Flora &amp; Finn are working for you.</span>
       </p>
       <ul className="mt-8 mx-auto max-w-[480px] space-y-2 text-left">
         {STEPS.map((s, i) => {
@@ -485,7 +440,7 @@ function Ready() {
         <p className="mt-5 max-w-[520px] text-[16px] leading-relaxed text-ink-500">
           Real London data. Real analysis. One dashboard where you can <span className="text-forest-500">see the whole thing.</span>
         </p>
-        <div className="mt-6 text-[12px] text-ink-400">Redirecting to your dashboard...</div>
+        <div className="mt-6 text-[12px] text-ink-400">Redirecting to your dashboard…</div>
         <Tagline block className="mt-12" />
       </div>
     </div>

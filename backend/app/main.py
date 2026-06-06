@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .database import close_db, connect_db
-from .routers import discoveries, flora
+from .routers import discoveries, flora, voice
 
 
 @asynccontextmanager
@@ -31,6 +31,7 @@ app.add_middleware(
 
 app.include_router(discoveries.router)
 app.include_router(flora.router)
+app.include_router(voice.router)
 
 
 @app.get("/api/health")

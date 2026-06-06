@@ -5,19 +5,32 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
     ports:
       - "8000:8000"
     environment:
+      # MongoDB
       - MONGODB_URL=mongodb://mongo:27017
-      - DATABASE_NAME=founderos
+      - DATABASE_NAME=${DATABASE_NAME:-founderos}
+      # Nemotron (NVIDIA NIM or any OpenAI-compatible endpoint)
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-not-needed}
-      - NVIDIA_BASE_URL=${NVIDIA_BASE_URL:-http://host.docker.internal:8080/v1}
+      - NVIDIA_BASE_URL=${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
       - NVIDIA_MODEL=${NVIDIA_MODEL:-nvidia/llama-3.1-nemotron-70b-instruct}
+      # ElevenLabs TTS (Flora + Finn voices). Leave blank to skip voice playback.
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - ELEVENLABS_VOICE_ID_FLORA=${ELEVENLABS_VOICE_ID_FLORA:-}
+      - ELEVENLABS_VOICE_ID_FINN=${ELEVENLABS_VOICE_ID_FINN:-}
+      - ELEVENLABS_MODEL_ID=${ELEVENLABS_MODEL_ID:-eleven_flash_v2_5}
     depends_on:
-      - mongo
+      mongo:
+        condition: service_healthy
 
   frontend:
     build: .

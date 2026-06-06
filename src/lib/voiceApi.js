@@ -1,7 +1,10 @@
-const voiceApiBase = import.meta.env.VITE_VOICE_API_URL || ''
+// ElevenLabs TTS now lives inside the FastAPI backend at /api/voice/tts.
+// In dev, Vite proxies /api → http://localhost:8000.
+// In Docker, nginx proxies /api → backend:8000.
+const BASE = import.meta.env.VITE_API_URL || ''
 
 export async function speakWithElevenLabs({ text, persona = 'finn', signal }) {
-  const response = await fetch(`${voiceApiBase}/api/voice/tts`, {
+  const response = await fetch(`${BASE}/api/voice/tts`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ text, persona }),
@@ -9,10 +12,10 @@ export async function speakWithElevenLabs({ text, persona = 'finn', signal }) {
   })
 
   if (!response.ok) {
-    let message = 'ElevenLabs request failed'
+    let message = 'TTS request failed'
     try {
       const payload = await response.json()
-      message = payload.error || message
+      message = payload.detail || payload.error || message
     } catch {
       message = await response.text()
     }
@@ -20,4 +23,9 @@ export async function speakWithElevenLabs({ text, persona = 'finn', signal }) {
   }
 
   return response.blob()
+}
+
+export async function voiceHealth() {
+  const res = await fetch(`${BASE}/api/voice/health`)
+  return res.json()
 }
