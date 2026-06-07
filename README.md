@@ -1,179 +1,183 @@
-# Finn & Flora · FounderOS London
+# NemoClaw setup (Care Compass)
 
-An agentic startup advisor for early-stage London founders. Flora conducts an intelligent intake conversation to understand your idea, then Finn analyses London Datastore data to build a validated launch plan — audience, market validation, locations, financials, and a 7-day action plan.
+Run on your **VM** (Ubuntu + Docker). Three steps:
 
-## Architecture
+1. **Install / verify NIM** — inference endpoint reachable from the VM
+2. **Onboard NemoClaw** — CLI + OpenClaw sandbox
+3. **Configure skills and network** — mcporter, MCP, weather, egress policies
 
-```
-┌─────────────┐     ┌──────────────────┐     ┌─────────┐
-│   Frontend   │────▶│   Backend (API)   │────▶│ MongoDB │
-│  React/Vite  │◀────│  FastAPI/Python   │◀────│         │
-│  port 5173   │     │    port 8000      │     │  27017  │
-└─────────────┘     └──────┬───────────┘     └─────────┘
-                           │
-                    ┌──────▼───────┐
-                    │  NVIDIA NIM  │
-                    │  Nemotron    │
-                    │  (local LLM) │
-                    └──────────────┘
-```
+Default sandbox name: **`my-assistant`**
 
-- **Frontend** — React 18 + Vite + Tailwind CSS + Lucide icons
-- **Backend** — FastAPI + Motor (async MongoDB) + OpenAI-compatible SDK
-- **LLM** — NVIDIA NIM / Nemotron (runs locally, OpenAI-compatible API)
-- **Database** — MongoDB 7 for storing discoveries and agent-generated data
-- **Containerised** — Docker Compose for the full stack
+---
 
-## Agents
+## Prerequisites
 
-**Flora** (Discovery Agent) — Conducts an adaptive intake conversation. She asks 3–10 questions depending on how much the founder shares, tracking coverage across 6 dimensions (idea, motivation, customer, format, budget, location). When she has enough context, she hands off to Finn.
-
-**Finn** (Research & Planning Agent) — Runs 6 parallel analysis modules against London Datastore data:
-1. Target Audience — segments, personas, interview questions
-2. Market Validation — evidence cards, risk radar, experiments
-3. Location Intelligence — scored London areas with map data
-4. Financials — cost bands, monthly breakdown, grant matching
-5. Action Plan — 7-day sprint, 30/60/90 roadmap, generated assets
-6. Agent Workspace — module status, activity log, confidence notes
-
-## Quick Start
-
-### Prerequisites
-
-- Node.js 20+
-- Python 3.12+
-- Poetry
-- Docker (for MongoDB, or run it natively)
-- A running NVIDIA NIM / Nemotron server
-
-### Local Development
+- Ubuntu VM with Docker (user in `docker` group)
+- Nemotron NIM deployed and reachable from the VM
 
 ```bash
-# Install dependencies
-just install
-
-# Start MongoDB
-just db
-
-# Set your NIM server URL (in backend/.env)
-echo "NVIDIA_BASE_URL=http://localhost:8080/v1" > backend/.env
-
-# Start backend + frontend
-just backend &   # terminal 1
-just frontend    # terminal 2
+cd scripts/nemoclaw
 ```
 
-Then open http://localhost:5173
+---
 
-## ElevenLabs voice
+## 1. Install NIM (verify endpoint)
 
-Copy real credentials into `.env`:
+Set your NIM base URL and model (match what NemoClaw will use):
 
 ```bash
-ELEVENLABS_API_KEY=...
-ELEVENLABS_VOICE_ID_FINN=...
-ELEVENLABS_VOICE_ID_FLORA=...
+export NIM_HOST=""
+export NIM_KEY="EMPTY"   # or your API key if required
+export NIM_MODEL="nvidia/nemotron-3-nano"
 ```
 
-Run the voice API in one terminal:
+**List models** (must return JSON):
 
 ```bash
-npm run voice:server
+curl -sS "${NIM_HOST}/v1/models" \
+  -H "Authorization: Bearer ${NIM_KEY}" | head -c 500
+echo
 ```
 
-Run the web app in another terminal:
+**Chat completions** (must return HTTP 200):
 
 ```bash
-npm run dev
+curl -sS -w "\nHTTP %{http_code}\n" "${NIM_HOST}/v1/chat/completions" \
+  -H "Authorization: Bearer ${NIM_KEY}" \
+  -H "Content-Type: application/json" \
+  -d "{\"model\":\"${NIM_MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Say OK\"}],\"max_tokens\":16,\"stream\":false}"
 ```
 
-The Vite dev server proxies `/api/voice/*` to `http://localhost:8787`, keeping the API key server-side.
-
-## Build
-### Docker Compose (full stack)
+Put the same values in `env.local`:
 
 ```bash
-# Set your NIM server URL
-export NVIDIA_BASE_URL=http://host.docker.internal:8080/v1
-
-# Build and run
-just up
+NEMOCLAW_ENDPOINT_URL=http://YOUR-NIM-HOST/v1
+NEMOCLAW_MODEL=nvidia/nemotron-3-nano
+COMPATIBLE_API_KEY=EMPTY
 ```
 
-Then open http://localhost:3001
+| Setting | Notes |
+| --- | --- |
+| `NEMOCLAW_ENDPOINT_URL` | Include **`/v1`** for `nemoclaw-setup.sh` / onboard |
+| `NEMOCLAW_MODEL` | Must match `/v1/models` (e.g. `nvidia/nemotron-3-nano`) |
+| `COMPATIBLE_API_KEY` | Use `EMPTY` if the NIM accepts any bearer token |
 
-### All Commands
+---
 
-| Command | Description |
-|---|---|
-| `just install` | Install all deps (npm + poetry) |
-| `just db` | Start MongoDB in Docker |
-| `just db-stop` | Stop MongoDB |
-| `just backend` | Start FastAPI on :8000 |
-| `just frontend` | Start Vite on :5173 |
-| `just dev` | Start backend + frontend together |
-| `just up` | Full stack via docker-compose |
-| `just down` | Tear down containers |
-| `just clean` | Tear down + delete volumes |
-| `just logs` | Tail all container logs |
+## 2. Onboard NemoClaw
 
-## API Endpoints
+Installs the NemoClaw CLI, creates the sandbox, points OpenClaw at your NIM, and runs `recover`.
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/flora/chat` | Send conversation, get Flora's next response |
-| `POST` | `/api/discoveries` | Create discovery (runs full Flora → Finn pipeline) |
-| `GET` | `/api/discoveries` | List all discoveries |
-| `GET` | `/api/discoveries/:id` | Get full discovery document |
-| `GET` | `/api/discoveries/:id/dashboard` | Get dashboard data only |
-| `PATCH` | `/api/discoveries/:id/dashboard` | Partial update dashboard |
-| `GET` | `/api/health` | Health check |
-
-## Configuration
-
-Create `backend/.env` (see `backend/.env.example`):
-
-```env
-MONGODB_URL=mongodb://localhost:27017
-DATABASE_NAME=founderos
-NVIDIA_BASE_URL=http://localhost:8080/v1
-NVIDIA_MODEL=nvidia/llama-3.1-nemotron-70b-instruct
+```bash
+chmod +x nemoclaw-setup.sh
+./nemoclaw-setup.sh
 ```
 
-## Data Sources
+What it does:
 
-All research is anchored to public datasets on the [London Datastore](https://data.london.gov.uk/dataset/):
+- Checks Docker
+- Installs NemoClaw (`curl … nemoclaw.sh`) if missing
+- Runs non-interactive onboard (`brew`, `npm`, `pypi`, `huggingface`, `openclaw-pricing` presets)
+- Patches `openclaw.json` (disables qqbot / weixin plugins)
+- `nemoclaw my-assistant recover`
 
-- Workplace Zone Statistics
-- London Business Demography
-- 2021 Census · Religion by Ward
-- London Borough Profiles
-- High Streets Health Check
-- TfL Open Data
-- Survey of Londoners
-- VOA Floor Space & Property
-- Planning Applications
-- GLA Funding & Support Directory
-- Food Business Establishments
-- London Air Quality Data
+**Connect and chat:**
 
-## Project Structure
-
+```bash
+nemoclaw my-assistant connect
+openclaw tui
 ```
-├── src/                    # React frontend
-│   ├── components/         # Shared UI components
-│   ├── pages/              # Dashboard pages (7 sections)
-│   ├── lib/api.js          # API client
-│   └── data/               # London dataset index
-├── backend/                # FastAPI backend
-│   └── app/
-│       ├── agents/         # Flora + Finn LLM agents
-│       ├── routers/        # API routes
-│       ├── llm.py          # NVIDIA NIM client
-│       ├── models.py       # Pydantic schemas
-│       └── database.py     # MongoDB connection
-├── docker-compose.yml      # Full stack containerisation
-├── Dockerfile              # Frontend (multi-stage → nginx)
-├── nginx.conf              # Reverse proxy config
-└── justfile                # Development commands
+
+Browser dashboard:
+
+```bash
+nemoclaw my-assistant dashboard-url
+```
+
+**Change NIM later** (resume existing sandbox):
+
+```bash
+NEMOCLAW_ENDPOINT_URL=http://your-host/v1 \
+  nemoclaw onboard --non-interactive --yes --resume --name my-assistant
+```
+
+---
+
+## 3. Configure skills and network
+
+Single script after `nemoclaw-setup.sh`: Open-tier egress, mcporter, GOV.UK MCP, filesystem MCP, bundled weather skill.
+
+```bash
+chmod +x skills-setup.sh
+./skills-setup.sh
+```
+
+### Network
+
+NemoClaw is **deny-by-default**. This script applies:
+
+- **Open-tier presets:** `brew`, `npm`, `pypi`, `huggingface`, `github`, `brave`, messaging/productivity presets, `local-inference`
+- **Custom `skills-egress`:** wttr.in, fly.dev MCP hosts, GitHub API, City of London ArcGIS, your NIM host (from `NEMOCLAW_ENDPOINT_URL`)
+
+Check policies:
+
+```bash
+nemoclaw my-assistant policy-list
+```
+
+### Skills / MCP
+
+| Component | Purpose |
+| --- | --- |
+| **mcporter** | CLI to call MCP servers from exec |
+| **govuk** | `https://govuk-mcp.fly.dev/mcp` (GOV.UK search, orgs, postcodes) |
+| **filesystem** | Workspace-scoped files under `/sandbox/.openclaw/workspace` |
+| **weather** | Bundled OpenClaw weather skill + wttr.in egress |
+
+Smoke tests (inside sandbox after connect):
+
+```bash
+source /sandbox/.local/env.sh
+mcporter list govuk --schema
+curl -sf --max-time 20 'https://wttr.in/London?format=3'
+```
+
+Example MCP call:
+
+```bash
+mcporter call govuk.govuk_search query="NHS 111" count:2 --output json
+```
+
+After setup, start a **new** TUI session so the agent picks up MCP tools:
+
+```bash
+nemoclaw my-assistant recover
+nemoclaw my-assistant connect
+openclaw tui
+```
+
+---
+
+## Configuration reference (`env.local`)
+
+```bash
+SANDBOX=my-assistant
+NEMOCLAW_ENDPOINT_URL=http://your-nim-host/v1
+NEMOCLAW_MODEL=nvidia/nemotron-3-nano
+COMPATIBLE_API_KEY=EMPTY
+
+# Direct HTTPS from sandbox — leave unset if it works
+# NEMOCLAW_PROXY_HOST=10.200.0.1
+# NEMOCLAW_PROXY_PORT=3128
+```
+
+## Quick reference
+
+```bash
+# Full path (fresh VM)
+cd scripts/nemoclaw
+cp env.example env.local    # edit NIM URL
+./nemoclaw-setup.sh
+./skills-setup.sh
+nemoclaw my-assistant connect && openclaw tui
 ```
