@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { MessageSquare, ArrowUpRight, Sparkles, Copy, Check } from 'lucide-react'
-import { Card, SectionHeader, Confidence, Tag, VoiceCommandBlock, AskWhyButton, SourceChip, EmptyPage } from '../components/ui'
+import { Card, SectionHeader, Confidence, Tag, VoiceCommandBlock, AskWhyButton, SourceChip, EmptyPage, SectionLoading } from '../components/ui'
 import { DynIcon } from '../lib/icons'
 
 const payTone = (v) =>
@@ -13,13 +13,16 @@ const numberWord = (n) =>
 
 const confLevel = (score) => (score >= 70 ? 'High' : score >= 45 ? 'Medium' : 'Low')
 
-export default function TargetAudience({ dashboard }) {
+export default function TargetAudience({ dashboard, section }) {
   const _segments = dashboard?.segments?.length ? dashboard.segments : []
   const _personas = dashboard?.personas?.length ? dashboard.personas : []
   const _interviewQs = dashboard?.interview_questions?.length ? dashboard.interview_questions : []
   const _audienceConf = dashboard?.audience_confidence ?? 0
   const hasAny = _segments.length || _personas.length || _interviewQs.length
-  if (!hasAny) return <EmptyPage label="audience analysis" />
+  if (!hasAny) {
+    if (section === 'processing' || section === 'pending') return <SectionLoading label="who buys" />
+    return <EmptyPage label="audience analysis" />
+  }
 
   return (
     <div className="space-y-10">
@@ -72,30 +75,39 @@ export default function TargetAudience({ dashboard }) {
           }
         />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {_segments.map((s, idx) => {
-            return (
-              <div key={s.name} className="card !p-6 relative overflow-hidden">
-                <div className={`absolute -right-10 -top-10 h-32 w-32 rounded-full gradient-soft-${s.tone} opacity-60 blur-2xl`} />
-                <div className="relative">
-                  <div className="flex items-center gap-3">
-                    <span className={`grid h-11 w-11 place-items-center rounded-2xl gradient-soft-${s.tone}`}>
-                      <DynIcon name={s.icon} size={18} className="text-ink-900" />
-                    </span>
-                    <div>
-                      <div className="display text-[20px] leading-tight text-ink-900">{s.name}</div>
-                      <div className="text-[12.5px] text-ink-500">{s.need}</div>
+          {_segments.map((s, idx) => (
+            <div key={s.name} className="card !p-6 relative overflow-hidden">
+              <div className={`absolute -right-10 -top-10 h-32 w-32 rounded-full gradient-soft-${s.tone} opacity-60 blur-2xl`} />
+              <div className="relative">
+                <div className="flex items-start gap-3">
+                  <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl gradient-soft-${s.tone}`}>
+                    <DynIcon name={s.icon} size={18} className="text-ink-900" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start gap-2">
+                      <div className="display text-[19px] leading-tight text-ink-900 min-w-0 flex-1">{s.name}</div>
+                      <span className="display shrink-0 text-[22px] leading-none text-ink-300">{String(idx + 1).padStart(2, '0')}</span>
                     </div>
-                    <span className="display ml-auto text-[28px] text-ink-300">{String(idx + 1).padStart(2, '0')}</span>
-                  </div>
-                  <div className="mt-5 grid grid-cols-3 gap-2.5">
-                    <Mini label="Pay" value={s.pay} pillClass={payTone(s.pay)} />
-                    <Mini label="Channel" value={s.channel} />
-                    <Mini label="Confidence" value={s.conf} />
+                    <div className="mt-1 text-[13px] leading-snug text-ink-500 line-clamp-2">{s.need}</div>
                   </div>
                 </div>
+
+                <div className="mt-4 flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${payTone(s.pay)}`}>
+                    Pays {s.pay}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.06] bg-cream-50 px-2.5 py-1 text-[11px] font-medium text-ink-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-sage-300" /> {s.conf} confidence
+                  </span>
+                </div>
+
+                <div className="mt-3 flex items-baseline gap-2 border-t border-black/[0.05] pt-3">
+                  <span className="shrink-0 text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500">Reach via</span>
+                  <span className="text-[13px] leading-snug text-ink-900">{s.channel}</span>
+                </div>
               </div>
-            )
-          })}
+            </div>
+          ))}
         </div>
       </section>
 
@@ -112,12 +124,12 @@ export default function TargetAudience({ dashboard }) {
               <div className={`absolute -right-12 -top-12 h-44 w-44 rounded-full gradient-soft-${p.tone} opacity-60 blur-2xl`} />
               <div className="relative">
                 <div className="flex items-center gap-3">
-                  <span className={`grid h-14 w-14 place-items-center rounded-2xl gradient-soft-${p.tone} display text-[24px] text-ink-900`}>
+                  <span className={`grid h-14 w-14 shrink-0 place-items-center rounded-2xl gradient-soft-${p.tone} display text-[24px] text-ink-900`}>
                     {p.initials}
                   </span>
-                  <div className="leading-tight">
-                    <div className="display text-[22px] text-ink-900">{p.name}</div>
-                    <div className="text-[12.5px] text-ink-500">{p.title} · {p.role}</div>
+                  <div className="min-w-0 flex-1 leading-tight">
+                    <div className="display text-[22px] text-ink-900 leading-tight">{p.name}</div>
+                    <div className="mt-0.5 text-[12.5px] leading-snug text-ink-500">{p.title} · {p.role}</div>
                   </div>
                 </div>
                 <div className="mt-5 space-y-3 text-[14px]">
@@ -194,20 +206,11 @@ function InterviewQ({ q, idx }) {
   )
 }
 
-function Mini({ label, value, pillClass }) {
-  return (
-    <div>
-      <div className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500">{label}</div>
-      <div className={`mt-1 inline-flex rounded-full border px-2.5 py-1 text-[11.5px] font-medium ${pillClass || 'bg-cream-50 border-ink-100 text-ink-700'}`}>{value}</div>
-    </div>
-  )
-}
-
 function Row({ label, value }) {
   return (
     <div className="flex gap-3">
       <div className="w-16 shrink-0 text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500 pt-0.5">{label}</div>
-      <div className="text-ink-900">{value}</div>
+      <div className="min-w-0 flex-1 text-ink-900">{value}</div>
     </div>
   )
 }

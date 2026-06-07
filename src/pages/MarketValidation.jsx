@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card, SectionHeader, Confidence, Tag, AskWhyButton, VoiceCommandBlock, SourceChip, EmptyPage } from '../components/ui'
+import { Card, SectionHeader, Confidence, Tag, AskWhyButton, VoiceCommandBlock, SourceChip, EmptyPage, SectionLoading } from '../components/ui'
 import { DynIcon } from '../lib/icons'
 
 function RiskRadar({ cats }) {
@@ -60,7 +60,7 @@ const impactTagKind = (impact) =>
   : impact === 'Risk' ? 'Risk'
   : 'Neutral'
 
-export default function MarketValidation({ dashboard }) {
+export default function MarketValidation({ dashboard, section }) {
   const _evidence = dashboard?.evidence?.length ? dashboard.evidence : []
   const _radar = dashboard?.radar?.length ? dashboard.radar : []
   const _experiments = dashboard?.experiments?.length ? dashboard.experiments : []
@@ -68,7 +68,10 @@ export default function MarketValidation({ dashboard }) {
   const _verdictDesc = dashboard?.validation_description || ''
 
   const hasAny = _evidence.length || _radar.length || _experiments.length || _verdict
-  if (!hasAny) return <EmptyPage label="market validation" />
+  if (!hasAny) {
+    if (section === 'processing' || section === 'pending') return <SectionLoading label="whether it's worth doing" />
+    return <EmptyPage label="market validation" />
+  }
 
   // Derive the headline stats + tag row from the real evidence so nothing is
   // hardcoded to a specific business idea.
@@ -127,14 +130,14 @@ export default function MarketValidation({ dashboard }) {
               const sourceSlug = e.source_slug || e.sourceSlug
               return (
                 <div key={e.signal} className={`rounded-2xl border border-black/[0.05] p-5 gradient-soft-${e.tone}`}>
-                  <div className="flex items-center gap-2.5">
-                    <span className="grid h-9 w-9 place-items-center rounded-xl bg-white/70">
+                  <div className="flex items-start gap-2.5">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/70">
                       <DynIcon name={e.icon} size={15} className="text-ink-900" />
                     </span>
-                    <span className="display text-[18px] text-ink-900">{e.signal}</span>
-                    <span className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${impactPill(e.impact)}`}>{e.impact}</span>
+                    <span className="display min-w-0 flex-1 text-[16px] leading-snug text-ink-900">{e.signal}</span>
+                    <span className={`shrink-0 inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${impactPill(e.impact)}`}>{e.impact}</span>
                   </div>
-                  <div className="mt-4 flex items-center justify-between gap-2 text-[12px] text-ink-700">
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-[12px] text-ink-700">
                     <SourceChip name={sourceName} slug={sourceSlug} />
                     <Confidence level={e.conf} />
                   </div>
@@ -172,14 +175,18 @@ export default function MarketValidation({ dashboard }) {
           />
           <ul className="space-y-2.5">
             {_experiments.map((x, i) => (
-              <li key={x.title} className="flex items-center gap-3.5 rounded-2xl bg-cream-50 px-4 py-3">
-                <span className="display grid h-8 w-8 place-items-center rounded-full bg-white text-[14px] text-ink-900 shadow-soft">
+              <li key={x.title} className="flex items-start gap-3.5 rounded-2xl bg-cream-50 px-4 py-3">
+                <span className="display grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white text-[14px] text-ink-900 shadow-soft">
                   {i + 1}
                 </span>
-                <span className="flex-1 text-[14px] text-ink-900">{x.title}</span>
-                <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${impactPill(x.impact === 'High' ? 'Opportunity' : 'Neutral')}`}>Impact {x.impact}</span>
-                <span className="pill-cream">Effort {x.effort}</span>
-                <span className="text-[11.5px] text-ink-500">{x.days}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[14px] leading-snug text-ink-900">{x.title}</div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${impactPill(x.impact === 'High' ? 'Opportunity' : 'Neutral')}`}>Impact {x.impact}</span>
+                    <span className="pill-cream">Effort {x.effort}</span>
+                    {x.days && <span className="pill-cream">{x.days}</span>}
+                  </div>
+                </div>
               </li>
             ))}
           </ul>

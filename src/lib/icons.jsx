@@ -4,7 +4,7 @@ import {
   Globe, Utensils, TrendingUp, ShieldAlert, Lightbulb, Database, BarChart3,
   ChefHat, PoundSterling, FileText, Sparkles, Megaphone, ShieldCheck, Truck,
   ClipboardList, Mail, Presentation, MapPin, Mic, MessageSquare, ListChecks,
-  Store, Package, Coffee, Wrench, Heart, Star, Target, Zap, Leaf,
+  Store, Package, Coffee, Wrench, Heart, Star, Target, Zap, Leaf, Swords,
 } from 'lucide-react'
 
 // The backend (LLM + MongoDB) stores icon references as plain strings, e.g.
@@ -15,7 +15,7 @@ const ICONS = {
   Globe, Utensils, TrendingUp, ShieldAlert, Lightbulb, Database, BarChart3,
   ChefHat, PoundSterling, FileText, Sparkles, Megaphone, ShieldCheck, Truck,
   ClipboardList, Mail, Presentation, MapPin, Mic, MessageSquare, ListChecks,
-  Store, Package, Coffee, Wrench, Heart, Star, Target, Zap, Leaf,
+  Store, Package, Coffee, Wrench, Heart, Star, Target, Zap, Leaf, Swords,
 }
 
 export function DynIcon({ name, fallback = Sparkles, ...props }) {

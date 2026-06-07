@@ -1,47 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
   Mic, MicOff, Pause, Sparkles, ArrowRight, CornerDownLeft, Send,
-  Database, ExternalLink, Leaf, StopCircle, Loader2,
+  Database, ExternalLink, Leaf, StopCircle, Loader2, RotateCcw, Trash2,
 } from 'lucide-react'
 import { Wordmark, LeafMark, Tagline } from '../components/Brand'
+import { AgentFace } from '../components/AgentFace'
+import GardenProgress from '../components/GardenProgress'
 import { api } from '../lib/api'
 import { speakWithElevenLabs } from '../lib/voiceApi'
 import { createRecorder, transcribe, isRecordingSupported, requestMicPermission } from '../lib/recorder'
 
 // ─── Visuals ────────────────────────────────────────────────────────────────
-
-function Orb({ state, who = 'flora' }) {
-  const grad = state === 'listening' ? 'gradient-orb-listening' : (who === 'flora' ? 'gradient-orb-flora' : 'gradient-orb-finn')
-  return (
-    <div className="relative grid place-items-center" style={{ width: 220, height: 220 }}>
-      <span className={`absolute inset-0 rounded-full ${grad} opacity-20 blur-3xl animate-breathe`} />
-      <span className={`absolute inset-4 rounded-full ${grad} opacity-40 blur-2xl animate-breathe`} style={{ animationDelay: '500ms' }} />
-      <span className={`absolute inset-9 rounded-full ${grad} opacity-95 blur-[1px] animate-breathe`} style={{ animationDelay: '200ms' }} />
-      <span className={`absolute inset-12 rounded-full ${grad} shadow-[inset_0_8px_30px_rgba(255,255,255,0.45),inset_0_-30px_50px_rgba(27,47,28,0.35)]`} />
-      <span className="absolute inset-[68px] rounded-full bg-white/30 backdrop-blur-sm" />
-
-      {state !== 'idle' && (
-        <>
-          <span className={`absolute inset-0 rounded-full border ${state === 'listening' ? 'border-peach-300/60' : 'border-sage-300/50'} animate-ringOut`} />
-          <span className={`absolute inset-0 rounded-full border ${state === 'listening' ? 'border-peach-300/50' : 'border-sage-300/40'} animate-ringOut`} style={{ animationDelay: '800ms' }} />
-        </>
-      )}
-
-      <div className="relative flex flex-col items-center text-white">
-        {state === 'listening'
-          ? <Mic size={22} className="opacity-95 drop-shadow" />
-          : <LeafMark size={22} className="opacity-95 drop-shadow" />}
-        <div className="mt-1.5 text-[9.5px] font-medium uppercase tracking-[0.22em] text-white/90">
-          {state === 'thinking' ? (who === 'flora' ? 'Flora thinking' : 'Finn working') :
-           state === 'speaking' ? (who === 'flora' ? 'Flora speaking' : 'Finn speaking') :
-           state === 'listening' ? 'Listening' :
-           state === 'waiting'  ? 'Your turn' :
-           who === 'flora' ? 'Flora' : 'Finn'}
-        </div>
-      </div>
-    </div>
-  )
-}
 
 // Compact audio-reactive waveform shown under the orb while listening.
 // `silenceProgress` (0..1) fades the bars as we approach auto-stop, giving
@@ -68,50 +37,159 @@ function ListeningBars({ level = 0, silenceProgress = 0 }) {
   )
 }
 
-function GatheredPips({ gathered }) {
-  const fields = [
-    { key: 'idea', label: 'Idea' },
-    { key: 'motivation', label: 'Why' },
-    { key: 'customer', label: 'Customer' },
-    { key: 'first_version', label: 'Format' },
-    { key: 'budget', label: 'Budget' },
-    { key: 'location', label: 'Location' },
-  ]
-  const done = fields.filter(f => gathered?.[f.key]).length
+// Shown while the mic is armed but you haven't started talking yet — a calm
+// breathing dot trio so you know Flora is ready and waiting for you to begin.
+function ReadyPulse() {
   return (
-    <div className="flex items-center gap-3">
-      {fields.map(f => (
-        <div key={f.key} className="flex flex-col items-center gap-1">
-          <span className={`h-2 w-2 rounded-full transition-all duration-500 ${
-            gathered?.[f.key] ? 'bg-sage-500 scale-125' : 'bg-ink-200'
-          }`} />
-          <span className={`text-[9px] font-medium uppercase tracking-wider transition-colors ${
-            gathered?.[f.key] ? 'text-sage-600' : 'text-ink-300'
-          }`}>{f.label}</span>
-        </div>
+    <div className="mt-4 flex h-8 items-center justify-center gap-1.5">
+      {[0, 1, 2].map(i => (
+        <span
+          key={i}
+          className="h-2 w-2 rounded-full bg-sage-400 animate-breathe"
+          style={{ animationDelay: `${i * 200}ms` }}
+        />
       ))}
-      <span className="ml-2 text-[11px] font-mono text-ink-400">{done}/6</span>
     </div>
   )
 }
 
-// Short verbal stalls Flora speaks while the LLM is generating her real reply.
-// All phrases trail off ("…") so they feel like she's mid-thought, not blocked.
-const STALLS = [
-  "Mmm…",
-  "Hmm…",
-  "Okay, so…",
-  "Right, so…",
-  "Mmhm…",
-  "Hmm, let me see…",
-  "Okay, walking with you on this…",
-  "So, thinking…",
-  "Mmm, okay…",
-  "Right, thinking out loud…",
+// A living tree that grows as Flora understands more of the idea. Each of the
+// six things she's listening for becomes a leaf that buds in; the trunk and
+// glow grow with progress. Replaces the old row of pips under Flora.
+const TREE_FIELDS = [
+  { key: 'idea',          label: 'Idea',     x: 110, y: 170, lx: 130, anchor: 'start' },
+  { key: 'motivation',    label: 'Why',      x: 74,  y: 150, lx: 60,  anchor: 'end' },
+  { key: 'customer',      label: 'Customer', x: 146, y: 148, lx: 162, anchor: 'start' },
+  { key: 'first_version', label: 'Format',   x: 86,  y: 114, lx: 70,  anchor: 'end' },
+  { key: 'budget',        label: 'Budget',   x: 142, y: 110, lx: 160, anchor: 'start' },
+  { key: 'location',      label: 'Location', x: 110, y: 84,  lx: 110, anchor: 'middle' },
 ]
 
-function pickStall() {
-  return STALLS[Math.floor(Math.random() * STALLS.length)]
+export function GrowingTree({ gathered, active = true }) {
+  const done = TREE_FIELDS.filter(f => gathered?.[f.key]).length
+  const progress = done / TREE_FIELDS.length
+  const trunkScale = 0.4 + 0.6 * progress
+  const sunlight = 0.35 + progress * 0.65 // sun brightens as Flora understands more
+
+  return (
+    <div className="flex flex-col items-center">
+      <svg viewBox="0 0 220 320" width="240" height="350" style={{ overflow: 'visible' }}>
+        {/* Sun — top right; grows brighter as the idea gets enough light */}
+        <g
+          className="animate-[sunPulse_4s_ease-in-out_infinite]"
+          style={{ transformOrigin: '178px 38px', opacity: sunlight }}
+        >
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((deg, i) => (
+            <line
+              key={deg}
+              x1="178" y1="38"
+              x2={178 + Math.cos((deg * Math.PI) / 180) * 18}
+              y2={38 + Math.sin((deg * Math.PI) / 180) * 18}
+              stroke="#FFD659"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              className="animate-[sunRay_3s_ease-in-out_infinite]"
+              style={{ animationDelay: `${i * 120}ms`, opacity: 0.4 + progress * 0.5 }}
+            />
+          ))}
+          <circle cx="178" cy="38" r="14" fill="#FFD659" />
+          <circle cx="178" cy="38" r="9" fill="#FFE99A" opacity="0.85" />
+        </g>
+
+        {/* Watering can — centred above the trunk; spout pours straight down */}
+        {active && done < 6 && (
+          <g transform="translate(88, 10)">
+            <g
+              className="animate-[canPour_2.8s_ease-in-out_infinite]"
+              style={{ transformOrigin: '28px 22px' }}
+            >
+              <path d="M6 14 L38 14 L34 36 C34 39 30 40 22 40 C14 40 10 39 10 36 Z" fill="#8FBF7E" />
+              <rect x="12" y="8" width="18" height="7" rx="3" fill="#6E8B6A" />
+              <path d="M6 18 C-2 16 -2 28 4 30" stroke="#6E8B6A" strokeWidth="3" fill="none" strokeLinecap="round" />
+              {/* spout points down toward trunk at x=110 */}
+              <path d="M22 36 L22 50" stroke="#6E8B6A" strokeWidth="3.5" strokeLinecap="round" />
+              <circle cx="22" cy="52" r="4" fill="#6E8B6A" />
+              <circle cx="20" cy="51" r="0.8" fill="#A8D8F0" />
+              <circle cx="22" cy="50" r="0.8" fill="#A8D8F0" />
+              <circle cx="24" cy="51" r="0.8" fill="#A8D8F0" />
+              <g transform="translate(22, 54)">
+                {[0, 1, 2, 3, 4].map(i => (
+                  <ellipse
+                    key={i}
+                    cx={-4 + i * 2}
+                    cy={0}
+                    rx="2.5"
+                    ry="4"
+                    fill="#7FD8E8"
+                    opacity="0.8"
+                    className="animate-[waterFallTree_1.3s_ease-in_infinite]"
+                    style={{ animationDelay: `${i * 180}ms` }}
+                  />
+                ))}
+              </g>
+            </g>
+          </g>
+        )}
+
+        {/* Tree — sways gently; watered from the can above */}
+        <g
+          className="animate-[treeSway_6s_ease-in-out_infinite]"
+          style={{ transformOrigin: '110px 292px' }}
+        >
+          <circle cx="110" cy="120" r="78" fill="#9DE3A6"
+            style={{ opacity: 0.06 + progress * 0.20, transition: 'opacity 900ms ease', filter: 'blur(14px)' }} />
+
+          <ellipse cx="110" cy="296" rx="78" ry="16" fill="#E7DFCE" opacity="0.7" />
+          <ellipse cx="110" cy="292" rx="60" ry="11" fill="#CFE3C2" opacity="0.6" />
+
+          <g style={{ transform: `scaleY(${trunkScale})`, transformOrigin: '110px 292px', transition: 'transform 900ms cubic-bezier(.2,.7,.2,1)' }}>
+            <path d="M104 292 C104 250 100 210 110 176 C120 210 116 250 116 292 Z" fill="#A07E5C" />
+            <path d="M110 230 C120 222 128 224 134 214" stroke="#A07E5C" strokeWidth="4" fill="none" strokeLinecap="round" />
+            <path d="M110 250 C100 244 92 246 86 236" stroke="#A07E5C" strokeWidth="4" fill="none" strokeLinecap="round" />
+          </g>
+
+          <g className="animate-[sproutSway_5s_ease-in-out_infinite]" style={{ transformOrigin: '110px 200px' }}>
+            {TREE_FIELDS.map((f, i) => {
+              const on = i < done
+              return (
+                <g key={f.key} style={{
+                  transform: on ? 'scale(1)' : 'scale(0)',
+                  transformOrigin: `${f.x}px ${f.y}px`,
+                  transition: `transform 650ms cubic-bezier(.34,1.56,.64,1) ${i * 60}ms, opacity 500ms ease ${i * 60}ms`,
+                  opacity: on ? 1 : 0,
+                }}>
+                  <circle cx={f.x} cy={f.y} r="26" fill={i % 2 ? '#7DCC93' : '#8FBF7E'} />
+                  <circle cx={f.x - 7} cy={f.y - 7} r="9" fill="#A6DBA8" opacity="0.6" />
+                </g>
+              )
+            })}
+            {done === 0 && (
+              <g style={{ transformOrigin: '110px 176px' }} className="animate-breathe">
+                <path d="M110 176 C103 170 96 172 92 164 C101 161 109 166 110 176 Z" fill="#8FBF7E" />
+              </g>
+            )}
+          </g>
+
+          {TREE_FIELDS.map((f, i) => i < done && (
+            <text key={f.key} x={f.lx} y={f.y + 3} textAnchor={f.anchor}
+              fontSize="10" fontWeight="600" fill="#5BAE78"
+              style={{ fontFamily: 'Inter, sans-serif', opacity: 0, animation: 'fadeIn 500ms ease forwards', animationDelay: `${i * 60 + 200}ms` }}>
+              {f.label}
+            </text>
+          ))}
+        </g>
+      </svg>
+      <div className="mt-1 text-center">
+        <div className="font-mono text-[12px] text-sage-600">{done}/6</div>
+        <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-ink-400">
+          {done === 0 ? 'A seed in the sun — tell Flora your idea'
+            : done < 3 ? 'Watering & growing'
+            : done < 6 ? 'Good light — keep going'
+            : 'Fully rooted — ready for Finn'}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // Static opener — skips a slow LLM cold-start on page load. From the second
@@ -120,7 +198,7 @@ const FLORA_OPENER = "Hey, I'm Flora — so happy you're here! Tell me, what's t
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export default function Intake({ onComplete, onOpenWorkspace }) {
+export default function Intake({ onComplete, onOpenWorkspace, onDeleteWorkspace }) {
   const [started, setStarted] = useState(false)
   const [conversation, setConversation] = useState([])
   const [floraMessage, setFloraMessage] = useState('')
@@ -136,55 +214,18 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
   const [voiceError, setVoiceError] = useState('')
   const [micState, setMicState] = useState('idle') // idle | recording | transcribing
   const [micError, setMicError] = useState('')
-  const [floraStall, setFloraStall] = useState('') // verbal filler while thinking
   const [micLevel, setMicLevel] = useState(0) // 0..1, drives the waveform bars
   const [silenceProgress, setSilenceProgress] = useState(0) // 0..1 toward auto-stop
+  const [speechHeard, setSpeechHeard] = useState(false) // armed & waiting vs. actually hearing you
   const [floraAudioPlaying, setFloraAudioPlaying] = useState(false)
   const inputRef = useRef(null)
   const chatEndRef = useRef(null)
   const spokenMessageRef = useRef(null)
   const recorderRef = useRef(null)
-  const stallControllerRef = useRef(null)
-  const stallAudioRef = useRef(null)
   const micStreamRef = useRef(null)
   const vadFrameRef = useRef(null)
   const vadAcRef = useRef(null)
   const micSupported = isRecordingSupported()
-
-  // ── Stall audio: short verbal filler while Flora is thinking ──
-  const stopStall = () => {
-    if (stallControllerRef.current) {
-      stallControllerRef.current.abort()
-      stallControllerRef.current = null
-    }
-    if (stallAudioRef.current) {
-      stallAudioRef.current.pause()
-      stallAudioRef.current = null
-    }
-  }
-
-  const playStall = async () => {
-    stopStall()
-    const text = pickStall()
-    setFloraStall(text)
-    const controller = new AbortController()
-    stallControllerRef.current = controller
-    try {
-      const blob = await speakWithElevenLabs({ text, persona: 'flora', signal: controller.signal })
-      if (controller.signal.aborted) return
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      stallAudioRef.current = audio
-      audio.onended = () => {
-        URL.revokeObjectURL(url)
-        if (stallAudioRef.current === audio) stallAudioRef.current = null
-      }
-      audio.play().catch(() => {})
-    } catch (err) {
-      // best-effort — silent stalls don't break the flow
-      if (err?.name !== 'AbortError') console.warn('Stall TTS failed', err)
-    }
-  }
 
   // ── Flora's opening turn — static so it shows up instantly ──
   useEffect(() => {
@@ -216,10 +257,6 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
     if (!floraMessage || floraThinking) return
     if (spokenMessageRef.current === floraMessage) return
     spokenMessageRef.current = floraMessage
-
-    // Real reply is ready — kill any stall audio still in flight
-    stopStall()
-    setFloraStall('')
 
     const controller = new AbortController()
     let audio
@@ -266,7 +303,6 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
     setConversation(updated)
 
     setFloraThinking(true)
-    playStall() // fire-and-forget verbal filler while we wait
 
     try {
       const res = await api.floraChat(updated)
@@ -322,15 +358,13 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
     if (micState !== 'idle') return
 
     setMicError('')
+    setSpeechHeard(false)
     try {
       const stream = micStreamRef.current || await requestMicPermission()
       micStreamRef.current = stream
 
-      const rec = await createRecorder({ stream })
-      recorderRef.current = rec
-      setMicState('recording')
-
-      // VAD: build an analyser on the shared stream
+      // Analyser first — we listen for real speech BEFORE we start recording,
+      // so background music / clatter during silence never gets transcribed.
       const AC = window.AudioContext || window.webkitAudioContext
       const ac = new AC()
       const source = ac.createMediaStreamSource(stream)
@@ -340,40 +374,72 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
       source.connect(analyser)
       vadAcRef.current = ac
 
+      setMicState('recording') // "armed" — UI shows "ready when you are"
+
       const data = new Uint8Array(analyser.frequencyBinCount)
-      const SILENCE_THRESHOLD = 14      // avg byte freq below this = silence
-      const MIN_SPEECH_MS = 350         // need at least this much voiced audio before counting silence
-      const SILENCE_TO_STOP_MS = 2000   // 2s of silence → Flora takes the turn
-      const HARD_STOP_MS = 45000        // 45s upper bound
+      const SPEECH_THRESHOLD = 24       // sustained energy above this = real speech
+      const SPEECH_CONFIRM_MS = 220     // must stay voiced this long to count (ignores clatter)
+      const SILENCE_THRESHOLD = 14      // below this once speaking = silence
+      const SILENCE_TO_STOP_MS = 1800   // silence after speech → take the turn
+      const HARD_STOP_MS = 45000        // upper bound once speaking
 
-      let spokeAt = 0
+      let recStarted = false
+      let voicedMs = 0
+      let speakingAt = 0
       let silenceAt = 0
-      const startTs = performance.now()
+      let lastTs = performance.now()
 
-      const tick = () => {
+      const tick = async () => {
         analyser.getByteFrequencyData(data)
         let sum = 0
         for (let i = 0; i < data.length; i++) sum += data[i]
         const avg = sum / data.length
+        const now = performance.now()
+        const dt = now - lastTs
+        lastTs = now
         setMicLevel(Math.min(1, avg / 80))
 
-        const now = performance.now()
-        if (avg > SILENCE_THRESHOLD) {
-          if (!spokeAt) spokeAt = now
-          silenceAt = 0
-          setSilenceProgress(0)
-        } else if (spokeAt && (now - spokeAt) > MIN_SPEECH_MS) {
-          if (!silenceAt) silenceAt = now
-          const elapsed = now - silenceAt
-          setSilenceProgress(Math.min(1, elapsed / SILENCE_TO_STOP_MS))
-          if (elapsed > SILENCE_TO_STOP_MS) {
-            finishListening()
-            return
+        if (!recStarted) {
+          // ── Waiting for you to actually start talking ──
+          if (avg > SPEECH_THRESHOLD) {
+            voicedMs += dt
+            // Begin capturing at the very onset so the first word isn't clipped,
+            // but stay "unconfirmed" until we've heard enough sustained voice.
+            if (!recorderRef.current) {
+              try {
+                recorderRef.current = await createRecorder({ stream })
+              } catch (err) {
+                setMicError(err?.message || 'Microphone unavailable')
+                stopVadLoop(); setMicState('idle'); return
+              }
+            }
+          } else {
+            voicedMs = Math.max(0, voicedMs - dt * 0.6)
+            // A transient clatter that never became real speech — throw the
+            // provisional capture away and keep waiting.
+            if (voicedMs === 0 && recorderRef.current) {
+              try { recorderRef.current.cancel() } catch {}
+              recorderRef.current = null
+            }
           }
-        }
-        if (now - startTs > HARD_STOP_MS) {
-          finishListening()
-          return
+          if (voicedMs >= SPEECH_CONFIRM_MS && recorderRef.current) {
+            recStarted = true
+            speakingAt = now
+            setSpeechHeard(true)
+          }
+          // Otherwise: keep waiting calmly — we never transcribe until you talk.
+        } else {
+          // ── You're speaking — watch for a natural pause to take the turn ──
+          if (avg > SILENCE_THRESHOLD) {
+            silenceAt = 0
+            setSilenceProgress(0)
+          } else {
+            if (!silenceAt) silenceAt = now
+            const elapsed = now - silenceAt
+            setSilenceProgress(Math.min(1, elapsed / SILENCE_TO_STOP_MS))
+            if (elapsed > SILENCE_TO_STOP_MS) { finishListening(true); return }
+          }
+          if (now - speakingAt > HARD_STOP_MS) { finishListening(true); return }
         }
         vadFrameRef.current = requestAnimationFrame(tick)
       }
@@ -384,17 +450,24 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
     }
   }
 
-  const finishListening = async () => {
+  const finishListening = async (spoke = true) => {
     const rec = recorderRef.current
-    if (!rec) return
     recorderRef.current = null
     stopVadLoop()
+    setSpeechHeard(false)
+    // Only transcribe if we actually captured speech; otherwise discard so
+    // background noise never becomes a fake answer.
+    if (!rec || !spoke) {
+      setMicState('idle')
+      if (rec) { try { rec.cancel() } catch {} }
+      return
+    }
     setMicState('transcribing')
     try {
       const blob = await rec.stop()
       const text = await transcribe(blob)
       setMicState('idle')
-      if (text) {
+      if (text && text.trim()) {
         setUserInput(text)
         await submitAnswer(text)
       }
@@ -408,8 +481,27 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
     const rec = recorderRef.current
     recorderRef.current = null
     stopVadLoop()
+    setSpeechHeard(false)
     setMicState('idle')
     if (rec) rec.cancel()
+  }
+
+  // Exit the discovery and return to the start screen.
+  const restart = () => {
+    cancelListening()
+    setStarted(false)
+    setConversation([])
+    setFloraMessage('')
+    setFloraTyped('')
+    setFloraTyping(false)
+    setFloraThinking(false)
+    setGathered({})
+    setUserInput('')
+    setAnalysing(false)
+    setPipelineDone(false)
+    setHandingOff(false)
+    setError(null)
+    spokenMessageRef.current = null
   }
 
   // Auto-start listening once Flora has finished her turn (no audio, no
@@ -468,40 +560,55 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
 
       <header className="relative z-10 mx-auto flex max-w-[1180px] flex-wrap items-center justify-between gap-3 px-8 pt-8">
         <Wordmark size="lg" />
-        <a href="https://data.london.gov.uk/dataset/" target="_blank" rel="noreferrer" className="pill bg-white hover:bg-cream-50">
-          <Database size={11} className="text-sage-500" /> Powered by London Datastore <ExternalLink size={10} />
-        </a>
+        <div className="flex items-center gap-2">
+          {started && !pipelineDone && (
+            <button
+              onClick={restart}
+              title="Exit and start a fresh idea"
+              className="pill bg-white hover:bg-cream-50"
+            >
+              <RotateCcw size={11} className="text-ink-500" /> Start over
+            </button>
+          )}
+          <a href="https://data.london.gov.uk/dataset/" target="_blank" rel="noreferrer" className="pill bg-white hover:bg-cream-50">
+            <Database size={11} className="text-sage-500" /> Powered by London Datastore <ExternalLink size={10} />
+          </a>
+        </div>
       </header>
 
       <main className="relative z-10 mx-auto flex min-h-[calc(100vh-90px)] max-w-[760px] flex-col items-center justify-center px-6 pb-16 pt-6">
         {!started ? (
-          <StartVoice onStart={() => setStarted(true)} onOpenWorkspace={onOpenWorkspace} />
+          <StartVoice
+            onStart={() => setStarted(true)}
+            onOpenWorkspace={onOpenWorkspace}
+            onDeleteWorkspace={onDeleteWorkspace}
+          />
         ) : pipelineDone ? (
           <Ready />
         ) : analysing ? (
-          <>
-            <Orb state="thinking" who="finn" />
-            <div className="mt-5 text-[11.5px] font-medium uppercase tracking-[0.18em] text-ink-500 text-center">
-              Flora &amp; Finn are building your plan
-            </div>
-            <div className="mt-8 w-full max-w-[640px]"><Analysing /></div>
-          </>
+          <div className="w-full max-w-[680px]"><Analysing /></div>
         ) : (
           <>
+            {/* Living tree on the right — grows as Flora understands more. */}
+            <div className="pointer-events-none fixed right-6 top-1/2 z-10 hidden -translate-y-1/2 xl:block 2xl:right-16">
+              <GrowingTree gathered={gathered} />
+            </div>
+
             <div
-              onClick={micState === 'recording' ? finishListening : undefined}
-              className={micState === 'recording' ? 'cursor-pointer' : ''}
-              title={micState === 'recording' ? 'Tap to stop and send' : ''}
+              onClick={micState === 'recording' && speechHeard ? () => finishListening(true) : undefined}
+              className={micState === 'recording' && speechHeard ? 'cursor-pointer' : ''}
+              title={micState === 'recording' && speechHeard ? 'Tap to stop and send' : ''}
             >
-              <Orb
+              <AgentFace
+                size={210}
+                who="flora"
                 state={
                   floraThinking ? 'thinking'
                   : floraTyping ? 'speaking'
                   : micState === 'recording' ? 'listening'
                   : micState === 'transcribing' ? 'thinking'
-                  : 'waiting'
+                  : 'idle'
                 }
-                who="flora"
               />
             </div>
 
@@ -509,19 +616,22 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
               {floraThinking ? 'Flora is thinking…'
                 : floraTyping ? 'Flora is speaking'
                 : micState === 'recording'
-                  ? (silenceProgress > 0.4 ? 'Okay, taking your turn…' : 'Listening · just speak')
+                  ? (!speechHeard ? 'Ready when you are — just start talking'
+                     : silenceProgress > 0.4 ? 'Okay, taking your turn…'
+                     : 'Listening · I can hear you')
                 : micState === 'transcribing' ? 'Catching that…'
                 : 'Your turn'}
             </div>
 
-            {/* Audio-reactive bars below the orb when listening */}
+            {/* Audio-reactive bars below the orb once you actually start talking;
+                a gentle ready-pulse while waiting for you to begin. */}
             {micState === 'recording' && (
-              <ListeningBars level={micLevel} silenceProgress={silenceProgress} />
+              speechHeard
+                ? <ListeningBars level={micLevel} silenceProgress={silenceProgress} />
+                : <ReadyPulse />
             )}
 
-            <div className="mt-4">
-              <GatheredPips gathered={gathered} />
-            </div>
+            {/* Growing tree lives on the right — see fixed panel below */}
 
             {conversation.length > 0 && (
               <div className="mt-5 w-full max-w-[600px] max-h-[200px] overflow-y-auto rounded-2xl bg-white/60 backdrop-blur border border-black/[0.05] px-5 py-4 space-y-3">
@@ -550,24 +660,6 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
             {voiceError && (
               <div className="mt-4 rounded-full border border-butter-200 bg-butter-100 px-4 py-1.5 text-[11.5px] text-ink-700">
                 Voice unavailable: {voiceError}
-              </div>
-            )}
-
-            {floraThinking && (
-              <div className="mt-5 flex flex-col items-center gap-2.5 animate-[fadeIn_0.3s_ease]">
-                {floraStall && (
-                  <div className="text-center">
-                    <div className="text-[10px] font-medium uppercase tracking-[0.22em] text-sage-500 mb-1.5">Flora</div>
-                    <p className="display italic text-[19px] leading-snug text-forest-500/70">
-                      {floraStall}
-                    </p>
-                  </div>
-                )}
-                <span className="inline-flex gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '150ms' }} />
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '300ms' }} />
-                </span>
               </div>
             )}
 
@@ -624,9 +716,11 @@ export default function Intake({ onComplete, onOpenWorkspace }) {
 
 // ─── States ────────────────────────────────────────────────────────────────
 
-function StartVoice({ onStart, onOpenWorkspace }) {
+function StartVoice({ onStart, onOpenWorkspace, onDeleteWorkspace }) {
   const [workspaces, setWorkspaces] = useState([])
   const [loadingList, setLoadingList] = useState(true)
+  const [confirmId, setConfirmId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -655,10 +749,9 @@ function StartVoice({ onStart, onOpenWorkspace }) {
 
   return (
     <div className="relative mx-auto flex w-full max-w-[620px] flex-col items-center text-center">
-      <span className="pointer-events-none absolute -top-20 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
-      <div className="relative grid h-24 w-24 place-items-center rounded-[2rem] gradient-orb-flora shadow-lift">
-        <LeafMark size={32} className="opacity-95 drop-shadow" />
-        <span className="absolute inset-0 animate-ringOut rounded-[2rem] border border-peach-200/60" />
+      <span className="pointer-events-none absolute -top-16 left-1/2 h-64 w-64 -translate-x-1/2 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
+      <div className="relative">
+        <AgentFace who="flora" state="happy" size={132} />
       </div>
 
       <div className="relative mt-8 section-eyebrow flex items-center gap-2">
@@ -695,28 +788,81 @@ function StartVoice({ onStart, onOpenWorkspace }) {
             </div>
           ) : (
             <div className="space-y-2">
-              {workspaces.slice(0, 6).map(w => (
-                <button
-                  key={w.id}
-                  onClick={() => onOpenWorkspace?.(w.id)}
-                  className="group flex w-full items-center gap-3 rounded-2xl border border-black/[0.06] bg-white px-4 py-3 text-left transition-all hover:shadow-soft hover:border-sage-300"
-                >
-                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl gradient-orb-flora shadow-soft">
-                    <LeafMark size={14} className="opacity-95" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-[13.5px] font-medium text-forest-500">
-                      {(w.workspace_name || 'Untitled workspace').slice(0, 80)}
-                    </div>
-                    <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-400">
-                      <span>{statusLabel(w.status)}</span>
-                      <span>·</span>
-                      <span>{fmtTime(w.created_at)}</span>
-                    </div>
+              {workspaces.slice(0, 6).map(w => {
+                const confirming = confirmId === w.id
+                const deleting = deletingId === w.id
+                return (
+                  <div
+                    key={w.id}
+                    className="flex items-center gap-1 rounded-2xl border border-black/[0.06] bg-white pr-2 transition-all hover:shadow-soft hover:border-sage-300"
+                  >
+                    {confirming ? (
+                      <div className="flex flex-1 items-center justify-between gap-2 px-4 py-3">
+                        <span className="text-[12.5px] text-ink-600">Delete this workspace?</span>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <button
+                            onClick={async () => {
+                              if (!onDeleteWorkspace) return
+                              setDeletingId(w.id)
+                              try {
+                                await onDeleteWorkspace(w.id)
+                                setWorkspaces(ws => ws.filter(x => x.id !== w.id))
+                                setConfirmId(null)
+                              } catch (e) {
+                                console.warn('Delete failed', e)
+                              } finally {
+                                setDeletingId(null)
+                              }
+                            }}
+                            disabled={deleting}
+                            className="rounded-lg bg-red-500 px-3 py-1.5 text-[11.5px] font-medium text-white hover:bg-red-600 disabled:opacity-50"
+                          >
+                            {deleting ? 'Deleting…' : 'Delete'}
+                          </button>
+                          <button
+                            onClick={() => setConfirmId(null)}
+                            disabled={deleting}
+                            className="rounded-lg px-2.5 py-1.5 text-[11.5px] text-ink-500 hover:bg-cream-100"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => onOpenWorkspace?.(w.id)}
+                          className="group flex min-w-0 flex-1 items-center gap-3 px-4 py-3 text-left"
+                        >
+                          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl gradient-orb-flora shadow-soft">
+                            <LeafMark size={14} className="opacity-95" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[13.5px] font-medium text-forest-500">
+                              {(w.workspace_name || 'Untitled workspace').slice(0, 80)}
+                            </div>
+                            <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-400">
+                              <span>{statusLabel(w.status)}</span>
+                              <span>·</span>
+                              <span>{fmtTime(w.created_at)}</span>
+                            </div>
+                          </div>
+                          <ArrowRight size={14} className="shrink-0 text-ink-300 group-hover:text-forest-500" />
+                        </button>
+                        {onDeleteWorkspace && (
+                          <button
+                            onClick={() => setConfirmId(w.id)}
+                            title="Delete workspace"
+                            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-ink-300 transition-colors hover:bg-red-50 hover:text-red-500"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </>
+                    )}
                   </div>
-                  <ArrowRight size={14} className="shrink-0 text-ink-300 group-hover:text-forest-500" />
-                </button>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -729,91 +875,15 @@ function StartVoice({ onStart, onOpenWorkspace }) {
 
 function Analysing() {
   const STEPS = [
-    'Flora analysing your conversation',
-    'Building your idea profile & clarity score',
-    'Finn researching target audience',
-    'Validating market signals against London data',
-    'Comparing London locations',
-    'Estimating costs & matching grants',
-    'Drafting your 7-day launch plan',
+    'Idea profile',
+    'Who buys',
+    'Worth doing?',
+    'Competition',
+    'Where to launch',
+    'Money & grants',
+    'Your 7-day plan',
   ]
-  const FINAL_MESSAGES = [
-    'Finn is putting it all together…',
-    'Cross-checking the London datasets…',
-    'Almost there — sharpening the plan…',
-    'Finn is double-checking the numbers…',
-  ]
-  const [stage, setStage] = useState(0)
-  const [finalMsg, setFinalMsg] = useState(0)
-
-  useEffect(() => {
-    if (stage >= STEPS.length - 1) return
-    const delay = stage === 0 ? 4000 : 5000
-    const t = setTimeout(() => setStage(s => s + 1), delay)
-    return () => clearTimeout(t)
-  }, [stage])
-
-  // After the steps finish, rotate a friendly "still working" message so the
-  // UI doesn't look frozen if the backend is still crunching.
-  useEffect(() => {
-    if (stage < STEPS.length - 1) return
-    const t = setInterval(() => {
-      setFinalMsg(m => (m + 1) % FINAL_MESSAGES.length)
-    }, 4500)
-    return () => clearInterval(t)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage])
-
-  const atEnd = stage >= STEPS.length - 1
-
-  return (
-    <div className="text-center">
-      <p className="display text-[26px] leading-[1.2] text-forest-500">
-        Give me a moment. <span className="italic-accent text-sage-500">Flora &amp; Finn are working for you.</span>
-      </p>
-      <ul className="mt-8 mx-auto max-w-[480px] space-y-2 text-left">
-        {STEPS.map((s, i) => {
-          const done = i < stage || (atEnd && i === stage)
-          const active = i === stage && !atEnd
-          return (
-            <li
-              key={s}
-              className={`flex items-center gap-3 rounded-full border px-4 py-2 text-[13px] transition-all duration-500
-                ${done   ? 'border-sage-200 bg-sage-50 text-forest-500 opacity-90' :
-                  active ? 'border-sage-300 bg-white text-forest-500 shadow-soft' :
-                           'border-transparent bg-transparent text-ink-300'}`}
-            >
-              <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] font-bold
-                ${done ? 'bg-sage-500 text-white' : active ? 'bg-forest-500 text-white animate-breathe' : 'bg-cream-200 text-ink-400'}`}>
-                {done ? '✓' : i + 1}
-              </span>
-              {s}
-              {active && (
-                <span className="ml-auto inline-flex gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '120ms' }} />
-                  <span className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '240ms' }} />
-                </span>
-              )}
-            </li>
-          )
-        })}
-      </ul>
-      {atEnd && (
-        <div className="mt-6 flex flex-col items-center gap-2.5 animate-[fadeIn_0.5s_ease]">
-          <span className="inline-flex gap-1">
-            <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" />
-            <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '150ms' }} />
-            <span className="h-2 w-2 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: '300ms' }} />
-          </span>
-          <div key={finalMsg} className="text-[13px] text-forest-500 animate-[fadeIn_0.5s_ease]">
-            {FINAL_MESSAGES[finalMsg]}
-          </div>
-          <div className="text-[11px] text-ink-400">This can take up to a minute on longer conversations.</div>
-        </div>
-      )}
-    </div>
-  )
+  return <GardenProgress steps={STEPS} intervalMs={2600} />
 }
 
 function Ready() {
@@ -821,10 +891,8 @@ function Ready() {
     <div className="relative mx-auto w-full max-w-[600px] text-center">
       <span aria-hidden className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-56 w-56 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
       <div className="relative flex flex-col items-center">
-        <div className="grid h-20 w-20 place-items-center rounded-3xl gradient-orb-finn shadow-lift">
-          <Leaf size={30} className="text-white" />
-        </div>
-        <h1 className="mt-8 display text-[56px] leading-[1.04] tracking-tight text-forest-500">
+        <AgentFace who="finn" state="happy" size={120} />
+        <h1 className="mt-6 display text-[56px] leading-[1.04] tracking-tight text-forest-500">
           Your plan is <span className="italic-accent text-sage-500">ready.</span>
         </h1>
         <p className="mt-5 max-w-[520px] text-[16px] leading-relaxed text-ink-500">

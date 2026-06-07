@@ -1,9 +1,11 @@
-import React from 'react'
+import React, { useState } from 'react'
 import {
   Briefcase, MapPin, Layers, Sprout, Sparkles, PoundSterling,
-  ArrowUpRight, AlertTriangle, Mic, Quote
+  ArrowUpRight, AlertTriangle, Mic, Send, Check, Loader2, X
 } from 'lucide-react'
-import { Card, SectionHeader, Confidence, Tag, Progress, MiniActions, VoiceCommandBlock, AskWhyButton } from '../components/ui'
+import { Card, SectionHeader, Confidence, Tag, Progress, MiniActions, VoiceCommandBlock, AskWhyButton, SectionLoading } from '../components/ui'
+import { AgentFace } from '../components/AgentFace'
+import { api } from '../lib/api'
 
 function EmptyState() {
   return (
@@ -20,20 +22,31 @@ function EmptyState() {
   )
 }
 
-export default function IdeaProfile({ dashboard }) {
+export default function IdeaProfile({ dashboard, section, discoveryId, onRefresh }) {
+  // Questions the founder has answered this session (optimistically hidden).
+  const [answeredQs, setAnsweredQs] = useState(() => new Set())
   const idea = dashboard?.idea || {}
   const hasIdea = !!(idea.title || idea.subtitle || idea.business_type)
 
-  if (!hasIdea) return <EmptyState />
+  if (!hasIdea) {
+    if (section === 'processing' || section === 'pending') return <SectionLoading label="your idea profile" who="Flora" />
+    return <EmptyState />
+  }
 
   const clarityRows = idea.clarity_rows?.length ? idea.clarity_rows : []
   const assumptions = idea.assumptions?.length ? idea.assumptions : []
-  const openQuestions = idea.open_questions?.length ? idea.open_questions : []
+  const allQuestions = idea.open_questions?.length ? idea.open_questions : []
+  const openQuestions = allQuestions.filter(q => !answeredQs.has(q))
+  const answeredCount = answeredQs.size
   const clarityScore = idea.clarity_score ?? 0
   const floraNote = idea.flora_note || ''
   const title = idea.title || 'Untitled idea'
   const description = idea.description || ''
   const subtitle = idea.subtitle || ''
+
+  // The idea page is Flora's domain — route every action straight to her.
+  const askFlora = (cmd) =>
+    window.dispatchEvent(new CustomEvent('voice-prefill', { detail: { text: cmd, agent: 'flora' } }))
 
   return (
     <div className="space-y-10">
@@ -93,9 +106,13 @@ export default function IdeaProfile({ dashboard }) {
         <Card className="relative overflow-hidden !p-7">
           <div className="absolute -left-10 top-1/2 -translate-y-1/2 h-48 w-48 rounded-full gradient-soft-peach opacity-50 blur-2xl" />
           <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl gradient-orb-flora shadow-soft">
-              <Quote size={18} className="text-white" />
-            </span>
+            <button
+              onClick={() => askFlora('Flora, walk me through your read on my idea.')}
+              title="Talk to Flora"
+              className="shrink-0 self-start transition-transform hover:scale-[1.04]"
+            >
+              <AgentFace who="flora" state="idle" size={72} />
+            </button>
             <div className="flex-1">
               <div className="section-eyebrow mb-1.5">Flora's read on the idea</div>
               <p className="display text-[22px] leading-snug text-forest-500">
@@ -104,7 +121,7 @@ export default function IdeaProfile({ dashboard }) {
                   : floraNote}"
               </p>
             </div>
-            <AskWhyButton>What changed?</AskWhyButton>
+            <AskWhyButton agent="flora" question="Flora, what made you read my idea this way?">What changed?</AskWhyButton>
           </div>
         </Card>
       )}
@@ -115,7 +132,7 @@ export default function IdeaProfile({ dashboard }) {
           <SectionHeader
             eyebrow="Clarity breakdown"
             title="Where it's solid, where it isn't"
-            right={<AskWhyButton />}
+            right={<AskWhyButton agent="flora" question="Flora, why did you score my idea's clarity like this?" />}
           />
           <div className="space-y-4">
             {clarityRows.map(r => (
@@ -138,15 +155,11 @@ export default function IdeaProfile({ dashboard }) {
             eyebrow="Assumptions"
             title="What Flora is currently believing"
             description="Accept, edit or challenge. The plan updates."
-            right={<AskWhyButton />}
+            right={<AskWhyButton agent="flora" question="Flora, why are you making these assumptions about my idea?" />}
           />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {assumptions.map(a => (
-              <div key={a.text} className={`rounded-2xl border border-black/[0.05] p-5 gradient-soft-${a.tone}`}>
-                <Tag kind={a.tag}>{a.tag}</Tag>
-                <p className="mt-3 display text-[18px] leading-snug text-ink-900">{a.text}</p>
-                <MiniActions />
-              </div>
+              <AssumptionCard key={a.text} a={a} askFlora={askFlora} />
             ))}
           </div>
         </Card>
@@ -157,34 +170,135 @@ export default function IdeaProfile({ dashboard }) {
         <Card className="!p-7">
           <SectionHeader
             eyebrow="Open questions"
-            title="Answer these to push clarity to 90%"
-            right={<button className="btn-text">Ask Flora in voice <Mic size={12} /></button>}
+            title="Answer these to push clarity up"
+            description={answeredCount > 0 ? `${answeredCount} answered — Flora is folding them in.` : undefined}
+            right={
+              <span className="pill-cream"><Sparkles size={11} className="text-peach-500" /> Clarity {clarityScore}%</span>
+            }
           />
-          <ul className="divide-y divide-black/[0.05]">
-            {openQuestions.map((q, i) => (
-              <li key={q} className="flex items-center gap-4 py-3.5">
-                <span className="display grid h-9 w-9 shrink-0 place-items-center rounded-full bg-cream-100 text-[16px] text-ink-900">
-                  {i + 1}
-                </span>
-                <span className="flex-1 text-[15px] text-ink-900">{q}</span>
-                <button className="btn-ghost text-[12px]">Answer <ArrowUpRight size={11} /></button>
-              </li>
-            ))}
-          </ul>
+          {openQuestions.length === 0 ? (
+            <div className="flex items-center gap-3 rounded-2xl bg-mint-100 border border-mint-200 px-4 py-4 text-[14px] text-forest-500">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-mint-200 text-forest-500"><Check size={16} /></span>
+              You've answered everything Flora asked. She's sharpening your profile now.
+            </div>
+          ) : (
+            <ul className="divide-y divide-black/[0.05]">
+              {openQuestions.map((q, i) => (
+                <OpenQuestion
+                  key={q} q={q} index={i} discoveryId={discoveryId}
+                  onAnswered={() => { setAnsweredQs(s => new Set(s).add(q)); onRefresh?.() }}
+                />
+              ))}
+            </ul>
+          )}
           <div className="mt-5 flex items-start gap-2.5 rounded-2xl bg-butter-100 border border-butter-200 px-4 py-3 text-[13px] text-ink-900">
-            <AlertTriangle size={14} className="mt-0.5 shrink-0" /> Knowing your budget and channel unlocks accurate financials and grant matching.
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" /> Each answer you give raises your clarity score and tightens the whole plan.
           </div>
         </Card>
 
         <VoiceCommandBlock
+          title="Tell Flora more about your idea"
+          agent="flora"
           commands={[
             'Make this more premium.',
             'Focus on B2B catering first.',
             'Assume I only have £5k.',
-            'Challenge my riskiest assumption.',
+            'Actually, my customer is different — let me explain.',
           ]}
         />
       </div>
+    </div>
+  )
+}
+
+// One open question with an inline answer box. Submitting sends the answer
+// to Flora (fast re-run) and optimistically removes it from the list.
+function OpenQuestion({ q, index, discoveryId, onAnswered }) {
+  const [open, setOpen] = useState(false)
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  const submit = async () => {
+    const answer = text.trim()
+    if (!answer || !discoveryId) return
+    setBusy(true); setErr('')
+    try {
+      await api.answerQuestion(discoveryId, q, answer)
+      onAnswered?.()
+    } catch (e) {
+      setErr(e?.message || 'Could not save')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <li className="py-3.5">
+      <div className="flex items-center gap-4">
+        <span className="display grid h-9 w-9 shrink-0 place-items-center rounded-full bg-cream-100 text-[16px] text-ink-900">
+          {index + 1}
+        </span>
+        <span className="flex-1 text-[15px] text-ink-900">{q}</span>
+        {!open && (
+          <button className="btn-ghost shrink-0 text-[12px]" onClick={() => setOpen(true)}>
+            Answer <ArrowUpRight size={11} />
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="mt-3 pl-[52px] animate-[fadeIn_0.3s_ease]">
+          <div className="flex items-start gap-2 rounded-2xl border border-sage-200 bg-white px-3.5 py-2.5 shadow-soft focus-within:ring-2 focus-within:ring-sage-200">
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit() } }}
+              placeholder="Type your answer for Flora…"
+              rows={2}
+              autoFocus
+              className="flex-1 resize-none bg-transparent text-[14px] leading-snug text-forest-500 placeholder:text-ink-300 outline-none"
+            />
+            <button onClick={() => { setOpen(false); setText('') }} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-400 hover:bg-cream-100" title="Cancel">
+              <X size={14} />
+            </button>
+            <button onClick={submit} disabled={!text.trim() || busy} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-forest-500 text-white hover:bg-forest-600 disabled:opacity-40" title="Send to Flora">
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+            </button>
+          </div>
+          {err && <div className="mt-1.5 text-[11.5px] text-rose-300">{err}</div>}
+        </div>
+      )}
+    </li>
+  )
+}
+
+// An assumption Flora is currently making. Accept = lock it in (visible
+// confirmation, no heavy re-run). Edit / Challenge open a real conversation
+// with Flora where she can defend it and propose a change you approve.
+function AssumptionCard({ a, askFlora }) {
+  const [accepted, setAccepted] = useState(false)
+  return (
+    <div className={`relative rounded-2xl border p-5 transition-colors ${accepted ? 'border-mint-200 bg-mint-50' : 'border-black/[0.05] gradient-soft-' + a.tone}`}>
+      <div className="flex items-center justify-between">
+        <Tag kind={a.tag}>{a.tag}</Tag>
+        {accepted && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-mint-200 px-2 py-0.5 text-[10.5px] font-medium text-forest-500">
+            <Check size={11} /> Locked in
+          </span>
+        )}
+      </div>
+      <p className="mt-3 display text-[18px] leading-snug text-ink-900">{a.text}</p>
+      {accepted ? (
+        <div className="mt-4 flex items-center gap-2 text-[12px] text-forest-500">
+          <span>Flora will keep building on this.</span>
+          <button onClick={() => setAccepted(false)} className="underline decoration-dotted hover:text-forest-600">Undo</button>
+        </div>
+      ) : (
+        <MiniActions
+          onAccept={() => setAccepted(true)}
+          onEdit={() => askFlora(`Let me correct this assumption: "${a.text}" — actually, `)}
+          onChallenge={() => askFlora(`Challenge this assumption and defend your reasoning — is it actually right? "${a.text}"`)}
+        />
+      )}
     </div>
   )
 }

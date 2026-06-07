@@ -49,6 +49,42 @@ def _extract_json(text) -> dict:
     raise ValueError(f"No valid JSON found in LLM response: {text[:200]}...")
 
 
+async def chat_text(
+    system: str,
+    user: str,
+    *,
+    persona: str = "finn",
+    temperature: float = 0.4,
+    max_tokens: int = 700,
+) -> str:
+    """Plain-text completion (for Q&A answers, not structured JSON)."""
+    client = get_client(persona)
+    model = settings.llm_config_for(persona)["model"]
+    try:
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    except Exception as e:
+        logger.error("LLM[%s] text call failed: %s", persona, e)
+        raise RuntimeError(f"LLM[{persona}] call failed: {e}") from e
+    raw, finish = _content_from(resp.choices[0])
+    if not raw and finish == "length":
+        # reasoning model ran out mid-think — retry with more room
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            temperature=temperature, max_tokens=max_tokens * 2,
+        )
+        raw, finish = _content_from(resp.choices[0])
+    return (raw or "").strip()
+
+
 def _content_from(choice) -> tuple[str | None, str | None]:
     """Pull text + finish_reason from a completion choice.
 
@@ -114,8 +150,16 @@ async def chat_json(
     try:
         return _extract_json(raw)
     except ValueError as e:
-        # Log what the model actually returned so we can see why it didn't
-        # parse (prose wrapping, truncated JSON, refusal, etc.).
+        # A truncated response (finish_reason=length) produces non-empty but
+        # unparseable JSON. Retry once with a bigger budget before giving up.
+        if finish == "length":
+            logger.warning("LLM[%s] JSON truncated (finish=length) — retrying with 2x tokens", persona)
+            raw2, finish2 = await _once(max_tokens * 2)
+            if raw2:
+                try:
+                    return _extract_json(raw2)
+                except ValueError:
+                    raw, finish = raw2, finish2  # fall through to error logging
         logger.error(
             "LLM[%s] JSON parse failed (%s). finish=%s, len=%d. Raw head: %s ... tail: %s",
             persona, e, finish, len(raw), raw[:800], raw[-300:],

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Check, Calendar, Sparkles, ArrowRight } from 'lucide-react'
-import { Card, SectionHeader, Tag, VoiceCommandBlock, AskWhyButton, EmptyPage } from '../components/ui'
+import { Card, SectionHeader, Tag, VoiceCommandBlock, AskWhyButton, EmptyPage, SectionLoading } from '../components/ui'
 import { DynIcon } from '../lib/icons'
 
 const statusPill = {
@@ -11,7 +11,7 @@ const statusPill = {
 
 const roadmapTones = ['peach', 'lavender', 'mint']
 
-export default function ActionPlan({ dashboard }) {
+export default function ActionPlan({ dashboard, section }) {
   const [checked, setChecked] = useState({})
 
   const days = dashboard?.days?.length ? dashboard.days : []
@@ -20,7 +20,10 @@ export default function ActionPlan({ dashboard }) {
   const tasks = dashboard?.tasks?.length ? dashboard.tasks : []
 
   const hasAny = days.length || roadmap.length || assets.length || tasks.length
-  if (!hasAny) return <EmptyPage label="action plan" />
+  if (!hasAny) {
+    if (section === 'processing' || section === 'pending') return <SectionLoading label="your next 7 days" />
+    return <EmptyPage label="action plan" />
+  }
 
   return (
     <div className="space-y-10">

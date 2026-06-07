@@ -15,6 +15,7 @@ async function request(path, options = {}) {
     const body = await res.text()
     throw new Error(`API ${res.status}: ${body}`)
   }
+  if (res.status === 204) return null
   return res.json()
 }
 
@@ -65,21 +66,24 @@ export const api = {
     return request(`/discoveries/${id}`)
   },
 
+  deleteDiscovery(id) {
+    return request(`/discoveries/${id}`, { method: 'DELETE' })
+  },
+
   getDashboard(id) {
     return request(`/discoveries/${id}/dashboard`)
   },
 
-  // Poll a discovery until its pipeline reaches a terminal state. The pipeline
-  // now runs in the background (creation returns instantly), so the UI waits
-  // here instead of on one long-blocking HTTP request.
-  async waitForDashboard(id, { intervalMs = 3000, timeoutMs = 15 * 60 * 1000, onTick } = {}) {
+  // Poll until the idea profile is ready (status 'ready' or 'dashboard_ready').
+  // The intake screen waits on this — once Flora's profile lands, the dashboard
+  // opens and Finn's sections stream in there. Returns the full discovery doc.
+  async waitUntilReady(id, { intervalMs = 1500, timeoutMs = 5 * 60 * 1000, onTick } = {}) {
     const start = Date.now()
     while (true) {
       const doc = await this.getDiscovery(id)
-      const status = doc.status
       if (onTick) onTick(doc)
-      if (status === 'dashboard_ready') return doc.dashboard || {}
-      if (status === 'error') {
+      if (doc.status === 'ready' || doc.status === 'dashboard_ready') return doc
+      if (doc.status === 'error' && !(doc.dashboard && doc.dashboard.idea)) {
         throw new Error(doc.error || 'Analysis failed. Please try re-running.')
       }
       if (Date.now() - start > timeoutMs) {
@@ -87,6 +91,38 @@ export const api = {
       }
       await new Promise(r => setTimeout(r, intervalMs))
     }
+  },
+
+  // Poll a discovery, calling onUpdate(doc) on every tick, until it reaches a
+  // terminal state (dashboard_ready / error). Returns a stop() function so the
+  // caller can cancel (e.g. on unmount or workspace switch).
+  pollDiscovery(id, onUpdate, { intervalMs = 2000, timeoutMs = 15 * 60 * 1000 } = {}) {
+    let stopped = false
+    const start = Date.now()
+    const tick = async () => {
+      if (stopped) return
+      try {
+        const doc = await this.getDiscovery(id)
+        if (stopped) return
+        onUpdate(doc)
+        const done = doc.status === 'dashboard_ready' || doc.status === 'error'
+        if (done || Date.now() - start > timeoutMs) return
+      } catch (e) {
+        if (stopped) return
+        console.warn('poll error', e)
+      }
+      if (!stopped) setTimeout(tick, intervalMs)
+    }
+    tick()
+    return () => { stopped = true }
+  },
+
+  // Back-compat: block until everything is done, return the dashboard.
+  async waitForDashboard(id, opts = {}) {
+    const doc = await this.waitUntilReady(id, opts)
+    if (doc.status === 'dashboard_ready') return doc.dashboard || {}
+    // Idea ready but Finn still running — return what we have.
+    return doc.dashboard || {}
   },
 
   updateDashboard(id, updates) {
@@ -104,6 +140,39 @@ export const api = {
     return request(`/discoveries/${id}/refine`, {
       method: 'POST',
       body: JSON.stringify({ command, persona }),
+    })
+  },
+
+  // Finn digs deeper on one section (re-runs just that module).
+  refineSection(id, section, instruction) {
+    return request(`/discoveries/${id}/refine-section`, {
+      method: 'POST',
+      body: JSON.stringify({ section, instruction }),
+    })
+  },
+
+  // Finn answers a question about the insights (no mutation).
+  askFinn(id, question) {
+    return request(`/discoveries/${id}/ask`, {
+      method: 'POST',
+      body: JSON.stringify({ question }),
+    })
+  },
+
+  // Conversational turn with an agent. Returns { reply, proposes_change,
+  // change_summary, apply }. No mutation — apply is confirmed separately.
+  chatWithAgent(id, agent, messages) {
+    return request(`/discoveries/${id}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ agent, messages }),
+    })
+  },
+
+  // Record a founder's answer to an open question → re-runs Flora (clarity++).
+  answerQuestion(id, question, answer) {
+    return request(`/discoveries/${id}/answer`, {
+      method: 'POST',
+      body: JSON.stringify({ question, answer }),
     })
   },
 

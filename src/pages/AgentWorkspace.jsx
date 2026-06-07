@@ -1,42 +1,57 @@
 import React, { useState } from 'react'
 import {
   Mic, BarChart3, Database, Activity, AlertCircle, ExternalLink,
-  RefreshCw, Search, Globe, MessageSquare
+  RefreshCw, Globe, MessageSquare, Loader2, Check
 } from 'lucide-react'
 import { Card, SectionHeader, Tag, Confidence, AskWhyButton } from '../components/ui'
-import { LeafMark, Tagline } from '../components/Brand'
-import { LONDON_DATASETS } from '../data/londonDatasets'
+import { Tagline } from '../components/Brand'
+import { AgentFace } from '../components/AgentFace'
 import { DynIcon } from '../lib/icons'
 
-const statusPill = {
-  done:    'bg-sage-100 border-sage-200 text-forest-500',
-  running: 'bg-peach-100 border-peach-200 text-peach-600',
-  queued:  'bg-cream-50 border-ink-100 text-ink-500',
+function StatusDot({ status }) {
+  if (status === 'processing') return <Loader2 size={13} className="shrink-0 animate-spin text-peach-500" />
+  if (status === 'ready') return <Check size={13} className="shrink-0 text-sage-500" />
+  return <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ink-200" />
 }
 
-export default function AgentWorkspace({ dashboard, onRerun }) {
-  const floraModules = dashboard?.flora_modules?.length ? dashboard.flora_modules : []
-  const finnModules = dashboard?.finn_modules?.length ? dashboard.finn_modules : []
+// Finn's real research sections — the source of truth for live status.
+const FINN_SECTIONS = [
+  { key: 'audience',    name: 'Target Audience',   icon: 'Users',         desc: 'Segments, personas & interview questions' },
+  { key: 'validation',  name: 'Market Validation', icon: 'BarChart3',     desc: 'Evidence, risk radar & experiments' },
+  { key: 'competitors', name: 'Competition',       icon: 'Swords',        desc: 'Rivals, gaps & how you win' },
+  { key: 'locations',   name: 'Locations',         icon: 'MapPin',        desc: 'London areas ranked by fit' },
+  { key: 'financials',  name: 'Money & Grants',    icon: 'PoundSterling', desc: 'Costs, burn & funding' },
+  { key: 'plan',        name: 'Launch Plan',       icon: 'ListChecks',    desc: '7-day sprint & 90-day roadmap' },
+]
+
+const livePill = {
+  ready:      'bg-sage-100 border-sage-200 text-forest-500',
+  processing: 'bg-peach-100 border-peach-200 text-peach-600',
+  error:      'bg-rose-100 border-rose-200 text-ink-800',
+  pending:    'bg-cream-50 border-ink-100 text-ink-500',
+}
+const liveLabel = { ready: 'Done', processing: 'Running…', error: 'Retry', pending: 'Queued' }
+
+export default function AgentWorkspace({ dashboard, sections = {}, wsStatus, onRerun }) {
   const log = dashboard?.agent_log?.length ? dashboard.agent_log : []
 
-  const [rerunning, setRerunning] = useState(false)
+  // Derive everything from the live section-status map (single source of truth).
+  const statusOf = (k) => sections[k] || 'pending'
+  const ideaStatus = statusOf('idea')
+  const finnDone = FINN_SECTIONS.filter(s => statusOf(s.key) === 'ready').length
+  const finnProcessing = FINN_SECTIONS.filter(s => statusOf(s.key) === 'processing').length
+  const isAnalysing = finnProcessing > 0 || wsStatus === 'processing'
+
   const [rerunError, setRerunError] = useState('')
   const handleRerun = async () => {
-    if (!onRerun || rerunning) return
+    if (!onRerun || isAnalysing) return
     setRerunError('')
-    setRerunning(true)
     try {
       await onRerun()
     } catch (e) {
       setRerunError(e?.message || 'Re-run failed')
-    } finally {
-      setRerunning(false)
     }
   }
-  const [filter, setFilter] = useState('All')
-  const filters = ['All', 'Locations', 'Audience', 'Market validation', 'Money & grants']
-  const visible = filter === 'All' ? LONDON_DATASETS : LONDON_DATASETS.filter(d => d.used_in.includes(filter))
-
   return (
     <div className="space-y-10">
       {/* The two agents hero */}
@@ -48,9 +63,11 @@ export default function AgentWorkspace({ dashboard, onRerun }) {
             <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
             <div className="absolute -left-10 -bottom-10 h-32 w-32 rounded-full gradient-soft-lavender opacity-30 blur-2xl" />
             <div className="relative flex items-start gap-4">
-              <span className="grid h-16 w-16 shrink-0 place-items-center rounded-3xl gradient-orb-flora shadow-lift">
-                <MessageSquare size={20} className="text-white" />
-              </span>
+              <AgentFace
+                who="flora"
+                state={ideaStatus === 'processing' ? 'thinking' : 'idle'}
+                size={80}
+              />
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h2 className="display text-[28px] leading-tight text-forest-500">Flora</h2>
@@ -60,30 +77,31 @@ export default function AgentWorkspace({ dashboard, onRerun }) {
                   Flora ran the voice intake. She listened carefully, asked the deeper questions, gently challenged weak assumptions, and built your <span className="text-forest-500">Idea Profile</span>.
                 </p>
               </div>
-              <span className="pill bg-peach-100 border-peach-200 text-peach-600">
-                <span className="h-1.5 w-1.5 rounded-full bg-peach-500" /> Idle · ready
+              <span className={`pill border ${livePill[ideaStatus]}`}>
+                <span className="h-1.5 w-1.5 rounded-full bg-current opacity-60" /> {ideaStatus === 'ready' ? 'Idle · ready' : ideaStatus === 'processing' ? 'Listening…' : liveLabel[ideaStatus]}
               </span>
             </div>
 
             <ul className="relative mt-5 space-y-2">
-              {floraModules.map(m => {
-                return (
-                  <li key={m.name} className="flex items-center gap-3 rounded-2xl bg-cream-50 px-3.5 py-2.5">
-                    <span className="grid h-8 w-8 place-items-center rounded-xl bg-white text-forest-500 shadow-soft">
-                      <DynIcon name={m.icon} size={13} />
-                    </span>
-                    <div className="flex-1 leading-tight">
-                      <div className="text-[13px] font-semibold text-forest-500">{m.name}</div>
-                      <div className="text-[11.5px] text-ink-500">{m.desc}</div>
-                    </div>
-                    <span className="text-[10.5px] font-mono text-ink-400">{m.time}</span>
-                  </li>
-                )
-              })}
+              {[
+                { name: 'Voice intake', icon: 'Mic', desc: 'Captured your idea, motivation & constraints' },
+                { name: 'Idea profile', icon: 'MessageSquare', desc: 'Clarity score, assumptions & open questions' },
+              ].map(m => (
+                <li key={m.name} className="flex items-center gap-3 rounded-2xl bg-cream-50 px-3.5 py-2.5">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white text-forest-500 shadow-soft">
+                    <DynIcon name={m.icon} size={13} />
+                  </span>
+                  <div className="min-w-0 flex-1 leading-tight">
+                    <div className="text-[13px] font-semibold text-forest-500">{m.name}</div>
+                    <div className="text-[11.5px] text-ink-500">{m.desc}</div>
+                  </div>
+                  <StatusDot status={ideaStatus} />
+                </li>
+              ))}
             </ul>
             <div className="relative mt-4 flex items-center gap-2">
               <button className="btn-ghost text-[12px]"><MessageSquare size={12} /> Resume with Flora</button>
-              <span className="text-[11.5px] text-ink-500">{floraModules.length} module{floraModules.length === 1 ? '' : 's'} · 1 voice interview</span>
+              <span className="text-[11.5px] text-ink-500">Discovery · 1 voice interview</span>
             </div>
           </div>
 
@@ -92,9 +110,11 @@ export default function AgentWorkspace({ dashboard, onRerun }) {
             <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full gradient-soft-mint opacity-50 blur-3xl" />
             <div className="absolute -left-10 -bottom-10 h-32 w-32 rounded-full gradient-soft-sky opacity-30 blur-2xl" />
             <div className="relative flex items-start gap-4">
-              <span className="grid h-16 w-16 shrink-0 place-items-center rounded-3xl gradient-orb-finn shadow-lift">
-                <LeafMark size={22} className="opacity-95" />
-              </span>
+              <AgentFace
+                who="finn"
+                state={isAnalysing ? 'thinking' : 'idle'}
+                size={80}
+              />
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h2 className="display text-[28px] leading-tight text-forest-500">Finn</h2>
@@ -104,125 +124,99 @@ export default function AgentWorkspace({ dashboard, onRerun }) {
                   Finn doesn't sugarcoat. He reads London for you, validates the idea against hard datasets, compares locations, surfaces grants, and writes the <span className="text-forest-500">launch plan</span>.
                 </p>
               </div>
-              <span className="pill bg-sage-100 border-sage-200 text-forest-500">
-                <Activity size={11} /> Researching
+              <span className={`pill border ${isAnalysing ? 'bg-peach-100 border-peach-200 text-peach-600' : 'bg-sage-100 border-sage-200 text-forest-500'}`}>
+                <Activity size={11} className={isAnalysing ? 'animate-pulse' : ''} /> {isAnalysing ? 'Researching…' : 'Ready'}
               </span>
             </div>
 
             <ul className="relative mt-5 space-y-2">
-              {finnModules.slice(0, 4).map(m => {
+              {FINN_SECTIONS.map(m => {
+                const st = statusOf(m.key)
                 return (
-                  <li key={m.name} className="flex items-center gap-3 rounded-2xl bg-cream-50 px-3.5 py-2.5">
-                    <span className="grid h-8 w-8 place-items-center rounded-xl bg-white text-forest-500 shadow-soft">
+                  <li key={m.key} className="flex items-center gap-3 rounded-2xl bg-cream-50 px-3.5 py-2.5">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-white text-forest-500 shadow-soft">
                       <DynIcon name={m.icon} size={13} />
                     </span>
-                    <div className="flex-1 leading-tight">
+                    <div className="min-w-0 flex-1 leading-tight">
                       <div className="text-[13px] font-semibold text-forest-500">{m.name}</div>
                       <div className="text-[11.5px] text-ink-500">{m.desc}</div>
                     </div>
-                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] font-medium ${statusPill[m.status]}`}>
-                      {m.status === 'done' ? 'Done' : m.status === 'running' ? 'Running' : 'Queued'}
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-medium ${livePill[st]}`}>
+                      {st === 'processing' && <Loader2 size={9} className="animate-spin" />}
+                      {liveLabel[st]}
                     </span>
                   </li>
                 )
               })}
             </ul>
-            {finnModules.length > 4 && (
-              <div className="relative mt-3 text-[11.5px] text-ink-500">
-                + {finnModules.length - 4} more module{finnModules.length - 4 === 1 ? '' : 's'}: {finnModules.slice(4).map(m => m.name).join(' · ')}
+
+            {/* Live progress bar */}
+            <div className="relative mt-4">
+              <div className="mb-1.5 flex items-center justify-between text-[11.5px]">
+                <span className="text-ink-500">{isAnalysing ? 'Analysing…' : 'Analysis complete'}</span>
+                <span className="font-mono text-ink-500">{finnDone}/{FINN_SECTIONS.length}</span>
               </div>
-            )}
-            <div className="relative mt-3 flex items-center gap-2">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-cream-200">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-sage-300 to-forest-400 transition-all duration-500"
+                  style={{ width: `${(finnDone / FINN_SECTIONS.length) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="relative mt-4 flex items-center gap-2">
               <button
                 onClick={handleRerun}
-                disabled={rerunning}
-                className="btn-ghost text-[12px] disabled:opacity-60"
+                disabled={isAnalysing}
+                className="btn-forest text-[12px] disabled:opacity-50"
                 title={rerunError || ''}
               >
-                <RefreshCw size={12} className={rerunning ? 'animate-spin' : ''} />
-                {rerunning ? 'Re-running Finn…' : 'Re-run analysis'}
+                <RefreshCw size={12} className={isAnalysing ? 'animate-spin' : ''} />
+                {isAnalysing ? `Analysing… ${finnDone}/${FINN_SECTIONS.length}` : 'Re-run analysis'}
               </button>
-              <span className="text-[11.5px] text-ink-500">{finnModules.length} module{finnModules.length === 1 ? '' : 's'} · {LONDON_DATASETS.length} datasets</span>
+              <span className="text-[11.5px] text-ink-500">{FINN_SECTIONS.length} research modules</span>
             </div>
+            {rerunError && <div className="relative mt-2 text-[11.5px] text-rose-300">{rerunError}</div>}
           </div>
         </div>
       </section>
 
-      {/* London Datastore — Flora's intelligence layer */}
+      {/* London Datastore — public reference only */}
       <section>
         <SectionHeader
           eyebrow="Finn's intelligence layer"
           title="The London datasets feeding your plan"
-          description="All anchored to public sources on data.london.gov.uk."
-          right={
-            <div className="flex items-center gap-2">
-              <button className="btn-ghost text-[12.5px]"><RefreshCw size={12} /> Re-pull</button>
-              <a
-                href="https://data.london.gov.uk/dataset/"
-                target="_blank"
-                rel="noreferrer"
-                className="btn-forest text-[12.5px]"
-              >
-                Browse Datastore <ExternalLink size={12} />
-              </a>
-            </div>
-          }
+          description="Finn draws on open data published by the GLA, ONS, TfL and others — all hosted on the London Datastore."
         />
 
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Search size={13} className="text-ink-500" />
-          {filters.map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors
-                ${filter === f
-                  ? 'border-forest-500 bg-forest-500 text-cream-50'
-                  : 'border-black/[0.06] bg-white text-ink-700 hover:bg-cream-50'}`}
-            >
-              {f}
-            </button>
-          ))}
-          <span className="ml-auto text-[12px] text-ink-500">{visible.length} dataset{visible.length === 1 ? '' : 's'}</span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {visible.map(d => (
-            <a
-              key={d.slug}
-              href={`https://data.london.gov.uk/dataset/${d.slug}`}
-              target="_blank"
-              rel="noreferrer"
-              className="card relative overflow-hidden !p-5 transition-all hover:shadow-lift"
-            >
-              <div className={`absolute -right-10 -top-10 h-32 w-32 rounded-full gradient-soft-${d.tone} opacity-60 blur-2xl`} />
-              <div className="relative">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className={`grid h-9 w-9 place-items-center rounded-xl gradient-soft-${d.tone}`}>
-                      <Database size={14} className="text-forest-500" />
-                    </span>
-                    <div className="leading-tight">
-                      <div className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500">London Datastore</div>
-                      <div className="display text-[17px] leading-tight text-forest-500">{d.name}</div>
-                    </div>
-                  </div>
-                  <ExternalLink size={13} className="mt-1 shrink-0 text-ink-300" />
-                </div>
-                <p className="mt-3 text-[13px] leading-relaxed text-ink-700">{d.description}</p>
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  {d.used_in.map(u => (
-                    <span key={u} className="pill-cream">{u}</span>
-                  ))}
-                </div>
-                <div className="mt-3 flex items-center justify-between text-[11.5px] text-ink-500">
-                  <span>{d.publisher} · refresh {d.refresh.toLowerCase()}</span>
-                  <span className="font-mono">pulled {d.last_pulled}</span>
-                </div>
+        <a
+          href="https://data.london.gov.uk/dataset/"
+          target="_blank"
+          rel="noreferrer"
+          className="card group relative flex items-start gap-4 overflow-hidden !p-6 transition-all hover:shadow-lift"
+        >
+          <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full gradient-soft-sky opacity-50 blur-2xl" />
+          <span className="relative grid h-12 w-12 shrink-0 place-items-center rounded-2xl gradient-soft-mint">
+            <Database size={18} className="text-forest-500" />
+          </span>
+          <div className="relative min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500">Reference</div>
+                <div className="display text-[22px] leading-tight text-forest-500">London Datastore</div>
               </div>
-            </a>
-          ))}
-        </div>
+              <ExternalLink size={15} className="mt-1 shrink-0 text-ink-300 transition-colors group-hover:text-forest-500" />
+            </div>
+            <p className="mt-2 max-w-[640px] text-[13.5px] leading-relaxed text-ink-600">
+              Browse the full catalogue of public London datasets at{' '}
+              <span className="font-medium text-forest-500">data.london.gov.uk</span>
+              {' '}— the official open-data portal for the Greater London Authority.
+            </p>
+            <span className="mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-forest-500">
+              <Globe size={13} /> Visit data.london.gov.uk
+            </span>
+          </div>
+        </a>
       </section>
 
       {/* Activity timeline */}
@@ -236,30 +230,32 @@ export default function AgentWorkspace({ dashboard, onRerun }) {
           <div className="relative">
             <div className="absolute left-6 top-2 bottom-2 w-px bg-gradient-to-b from-peach-400 via-cream-200 to-forest-400" />
             <ul className="space-y-3">
-              {[...floraModules.map(m => ({ ...m, who: 'Flora' })), ...finnModules.map(m => ({ ...m, who: 'Finn' }))].map((a, idx) => {
+              {[
+                { who: 'Flora', name: 'Idea discovery', icon: 'MessageSquare', key: 'idea', desc: 'Built your idea profile from the voice intake.' },
+                ...FINN_SECTIONS.map(s => ({ who: 'Finn', name: s.name, icon: s.icon, key: s.key, desc: s.desc })),
+              ].map((a, idx) => {
                 const isFlora = a.who === 'Flora'
+                const st = statusOf(a.key)
                 return (
-                  <li key={a.name + idx} className="relative flex items-start gap-4">
-                    <div className={`relative z-10 grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${isFlora ? 'gradient-orb-flora' : 'gradient-orb-finn'}`}>
-                      <DynIcon name={a.icon} size={16} className="text-white" />
+                  <li key={a.key + idx} className="relative flex items-start gap-4">
+                    <div className="relative z-10 shrink-0">
+                      <AgentFace
+                        who={isFlora ? 'flora' : 'finn'}
+                        state={st === 'processing' ? 'thinking' : st === 'ready' ? 'happy' : 'idle'}
+                        size={52}
+                      />
                     </div>
                     <div className="flex-1 card !p-4">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[14px] font-semibold text-forest-500">{a.name}</span>
                         <span className="pill-cream">{a.who}</span>
-                        <span className={`ml-auto inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusPill[a.status]}`}>
-                          {a.status === 'done' ? 'Completed' : a.status === 'running' ? 'Running' : 'Queued'}
+                        <span className={`ml-auto inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium ${livePill[st]}`}>
+                          {st === 'processing' && <Loader2 size={9} className="animate-spin" />}
+                          {st === 'ready' ? 'Completed' : liveLabel[st]}
                         </span>
-                        <span className="text-[11px] font-mono text-ink-400">{a.time}</span>
                       </div>
                       <div className="mt-1.5 text-[13px] text-ink-500">{a.desc}</div>
-                      {a.sources > 0 && (
-                        <div className="mt-2 flex items-center gap-1.5 text-[11.5px] text-ink-500">
-                          <Database size={11} className="text-sage-500" />
-                          Queried <span className="text-forest-500 font-semibold">{a.sources}</span> London datasets
-                        </div>
-                      )}
-                      {a.status === 'running' && (
+                      {st === 'processing' && (
                         <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-cream-200">
                           <div className="h-full w-1/2 animate-shimmer bg-gradient-to-r from-transparent via-sage-500 to-transparent bg-[length:200%_100%]" />
                         </div>

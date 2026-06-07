@@ -144,3 +144,38 @@ body {
   transform: rotate(-12deg);
   vertical-align: -1px;
 }
+
+/* ── AgentFace expressions ─────────────────────────────────────────────── */
+@keyframes faceBlink { 0%, 90%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+@keyframes faceTalk  { 0%, 100% { transform: scaleY(0.35); } 50% { transform: scaleY(1); } }
+@keyframes faceLook  { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(-2.2px); } 70% { transform: translateX(2.2px); } }
+
+.face-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: faceBlink 4.6s infinite ease-in-out;
+}
+.face-eyes-think {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: faceLook 2.6s infinite ease-in-out;
+}
+.face-talk {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: faceTalk 0.3s infinite ease-in-out;
+}
+
+/* ── Botanical bot + garden ──────────────────────────────────────────────── */
+@keyframes sproutSway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+@keyframes botBob     { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes confetti   { 0% { transform: translateY(0) scale(1); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(34px) scale(0.6); opacity: 0; } }
+@keyframes waterDrop  { 0% { transform: translateY(0); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(26px); opacity: 0; } }
+@keyframes growPop    { 0% { transform: scale(0.85); } 60% { transform: scale(1.06); } 100% { transform: scale(1); } }
+@keyframes fadeIn     { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes waterFall      { 0% { transform: translateY(0); opacity: 0; } 15% { opacity: 1; } 90% { opacity: 1; } 100% { transform: translateY(52px); opacity: 0; } }
+@keyframes waterFallTree  { 0% { transform: translateY(0); opacity: 0; } 12% { opacity: 1; } 88% { opacity: 1; } 100% { transform: translateY(128px); opacity: 0; } }
+@keyframes sunPulse   { 0%, 100% { transform: scale(1); opacity: 0.85; } 50% { transform: scale(1.06); opacity: 1; } }
+@keyframes treeSway   { 0%, 100% { transform: rotate(-1.2deg); } 50% { transform: rotate(1.2deg); } }
+@keyframes sunRay     { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.75; } }
+@keyframes canPour    { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(6deg); } }

@@ -1,284 +1,256 @@
 """Finn — the Research & Planning Agent.
 
-Takes Flora's idea profile and the intake conversation, then generates
-all research sections: audience, validation, locations, financials, and action plan.
+Finn turns Flora's structured idea profile into the dashboard research
+sections. Two design choices keep this fast and cheap:
+
+1. CONTEXT REUSE — Flora already distilled the (long) intake conversation
+   into a compact idea profile. Finn reuses that small "brief" for every
+   module instead of re-sending the full transcript 6 times. That cuts
+   input tokens dramatically.
+
+2. INDEPENDENT MODULES — each section is its own small request with a tight
+   prompt and a focused JSON shape, so they can run concurrently and stream
+   into the UI one at a time (see pipeline.run_streaming_pipeline).
 """
 
+import asyncio
+import json
 import logging
+import time
 
-from ..llm import chat_json
+from ..config import settings
+from ..llm import chat_json, chat_text
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_AUDIENCE = """\
-You are Finn, a sharp London startup research agent. You have access to London Datastore datasets
-(workplace zone statistics, census data, business demography, TfL flows, etc.).
 
-Given an idea profile from Flora, generate the Target Audience analysis.
-Respond with a single JSON object:
+def build_brief(idea_profile: dict) -> str:
+    """Compact, reusable context built from Flora's structured profile.
 
-{
-  "audience_confidence": 0-100 integer,
-  "segments": [
-    {
-      "name": "Segment name",
-      "need": "What they need from this business",
-      "pay": "High|Medium|Low",
-      "channel": "How to reach them",
-      "conf": "High|Medium|Low|Low-Medium|Medium-High",
-      "icon": "Building2|Users|HeartPulse|CalendarDays|Briefcase|ShoppingCart|Globe|Utensils",
-      "tone": "peach|lavender|mint|butter|sky|rose"
-    }
-    ... (generate 3-5 segments, ranked by combined demand × willingness to pay)
-  ],
-  "personas": [
-    {
-      "name": "First name",
-      "title": "Professional title",
-      "role": "Role · Location context",
-      "pain": "Their main pain point in one sentence",
-      "trigger": "What triggers their buying decision",
-      "offer": "What this business offers them",
-      "tone": "peach|lavender|mint|butter",
-      "initials": "First letter of name"
-    }
-    ... (generate 2-3 personas)
-  ],
-  "interview_questions": ["Question 1", ...] (generate 4-6 customer discovery questions)
-}
+    This replaces re-sending the whole transcript to every Finn module.
+    """
+    ip = idea_profile if isinstance(idea_profile, dict) else {}
+    lines = []
 
-Be specific to the London market. Reference real London areas, demographics, and business patterns.
-Do NOT use generic advice — make it feel like you've actually read London data.
-"""
+    def add(label, value):
+        v = (value or "").strip() if isinstance(value, str) else value
+        if v:
+            lines.append(f"{label}: {v}")
 
-SYSTEM_VALIDATION = """\
-You are Finn, a London startup research agent with access to London Datastore datasets.
+    add("Idea", ip.get("title"))
+    add("Summary", ip.get("subtitle"))
+    add("Type", ip.get("business_type"))
+    add("Stage", ip.get("stage"))
+    add("Physical site", ip.get("physical_site"))
+    add("Revenue", ip.get("revenue"))
+    add("Read", ip.get("flora_note"))
 
-Given an idea profile, generate Market Validation analysis.
-Respond with a single JSON object:
+    assumptions = ip.get("assumptions") or []
+    texts = [a.get("text", "") for a in assumptions if isinstance(a, dict) and a.get("text")]
+    if texts:
+        lines.append("Assumptions: " + "; ".join(texts[:6]))
 
-{
-  "validation_verdict": "One punchy sentence with an em dash for dramatic split (e.g. 'Promising — but you'll have to earn it.')",
-  "validation_description": "2-3 sentences explaining the verdict with specific London market evidence",
-  "evidence": [
-    {
-      "signal": "What the data shows (short)",
-      "impact": "Positive|Risk|Opportunity|Neutral",
-      "conf": "High|Medium|Low",
-      "source_name": "Name of the London Datastore dataset or public data source",
-      "source_slug": "slug-for-data-london-gov-uk (e.g. workplace-zone-statistics, business-demography, census-2021-religion, high-streets-health, tfl-open-data, food-business-est, voa-floorspace, borough-profiles, gla-funding-support, survey-of-londoners, planning-applications, air-quality)",
-      "tone": "mint|rose|lavender|butter|sky|peach",
-      "icon": "TrendingUp|ShieldAlert|Lightbulb|Database|BarChart3|Users"
-    }
-    ... (generate 4-6 evidence cards)
-  ],
-  "radar": [
-    {"label": "Demand", "value": 0.0-1.0},
-    {"label": "Competition", "value": 0.0-1.0},
-    {"label": "Cost", "value": 0.0-1.0},
-    {"label": "Location", "value": 0.0-1.0},
-    {"label": "Licensing", "value": 0.0-1.0},
-    {"label": "Operational", "value": 0.0-1.0},
-    {"label": "Funding", "value": 0.0-1.0}
-  ],
-  "experiments": [
-    {"title": "Experiment description", "impact": "High|Medium|Low", "effort": "High|Medium|Low", "days": "Time estimate"},
-    ... (generate 4-6 experiments, ordered by impact/effort ratio)
-  ]
-}
+    if not lines:
+        lines.append("Idea: (the founder's idea — infer from any available context)")
 
-Higher radar values = more concerning/risky. Be specific to the London context.
-Reference real London areas, datasets, and market realities.
-"""
-
-SYSTEM_LOCATIONS = """\
-You are Finn, a London startup research agent. Given an idea profile, recommend London locations.
-Respond with a single JSON object:
-
-{
-  "locations": [
-    {
-      "id": "short-id",
-      "name": "Area name",
-      "demand": "High|Medium|Medium-High|Low",
-      "compete": "High|Medium|Low",
-      "transport": "High|Medium|Low",
-      "cost": "High|Medium|Low",
-      "b2b": "High|Medium|Low",
-      "reco": "One-line recommendation",
-      "score": 0-100 fit score,
-      "x": 0-100 approximate x position on a London map (east London ~70-90, central ~45-65, west ~10-40),
-      "y": 0-100 approximate y position (north ~20-35, central ~35-55, south ~55-75),
-      "primary": true for top pick only, false for others
-    }
-    ... (generate 3-5 locations, sorted by score descending)
-  ]
-}
-
-Only recommend real London areas. Be specific about WHY each area fits or doesn't.
-Consider the business type, target audience, and budget from the idea profile.
-"""
-
-SYSTEM_FINANCIALS = """\
-You are Finn, a London startup financial advisor. Given an idea profile, generate financial analysis.
-Respond with a single JSON object:
-
-{
-  "cost_bands": [
-    {"title": "Band name", "range": "£Xk – £Yk", "subtitle": "What this gets you", "tone": "peach|mint|sky|rose", "tag": "Recommended|Opportunity|Neutral|Risk", "fill": 0-100 visual fill percentage},
-    ... (generate 3-4 bands from lean to full, with Recommended on the one matching their budget)
-  ],
-  "monthly_assumptions": [
-    {"row": "Line item", "range": "£X / mo or £X one-off", "notes": "Explanation", "icon": "ChefHat|PoundSterling|FileText|Sparkles|Megaphone|ShieldCheck|Truck|Globe|Users"},
-    ... (generate 6-10 realistic monthly cost items for this specific business in London)
-  ],
-  "grants": [
-    {
-      "name": "Grant or support scheme name",
-      "fit": 0-100 match percentage,
-      "why": "Why this scheme fits this founder",
-      "notes": "Eligibility notes",
-      "deadline": "Rolling|Quarterly|specific deadline",
-      "docs": ["Required doc 1", "Required doc 2"],
-      "tone": "mint|peach|lavender|butter"
-    }
-    ... (generate 3-5 real or realistic London/UK grants and support schemes)
-  ],
-  "funding_readiness": 0-100 integer (how ready the founder is to apply for funding based on what they've shared)
-}
-
-All costs MUST be in GBP (£) and realistic for London 2024-2025 market rates.
-Reference real London support schemes where possible (GLA programmes, Start Up Loans, local enterprise schemes).
-"""
-
-SYSTEM_PLAN = """\
-You are Finn, a London startup planning agent. Given an idea profile, generate an action plan.
-Respond with a single JSON object:
-
-{
-  "days": [
-    {"d": "01", "title": "Task for day 1", "status": "done|doing|todo", "owner": "You|You + Agent Name"},
-    ... (generate exactly 7 days, day 01 = done, day 02 = doing, rest = todo)
-  ],
-  "roadmap": [
-    {"window": "30 days", "goal": "Goal statement", "tone": "peach", "detail": ["Milestone 1", "Milestone 2", "Milestone 3"]},
-    {"window": "60 days", "goal": "Goal statement", "tone": "lavender", "detail": ["Milestone 1", "Milestone 2", "Milestone 3"]},
-    {"window": "90 days", "goal": "Goal statement", "tone": "mint", "detail": ["Milestone 1", "Milestone 2", "Milestone 3"]}
-  ],
-  "assets": [
-    {"title": "Asset name", "icon": "ClipboardList|Globe|Mail|FileText|Building2|Presentation|MapPin|Users|BarChart3", "tone": "peach|sky|lavender|butter|mint|rose"},
-    ... (generate 6-8 downloadable assets Finn would generate for this founder)
-  ],
-  "tasks": [
-    {"t": "Task description", "status": "in_progress|todo", "tag": "Recommended|Opportunity|Neutral"},
-    ... (generate 4-6 priority tasks for this week)
-  ]
-}
-
-Make the plan specific to THIS business in London. Days should be realistic for a founder
-who may be doing this alongside a day job. Focus on validation before commitment.
-"""
-
-SYSTEM_AGENTS = """\
-You are generating the agent workspace metadata. Given an idea profile, produce the agent activity log.
-Respond with a single JSON object:
-
-{
-  "flora_modules": [
-    {"name": "Module name", "desc": "What this module did, specific to this idea", "icon": "Mic|MessageSquare|ShieldAlert|Users|Lightbulb", "status": "done", "time": "Xm ago", "sources": 0},
-    ... (generate 3 Flora modules — she does discovery, profiling, assumption probing)
-  ],
-  "finn_modules": [
-    {"name": "Module name", "desc": "What this module did, specific to this idea", "icon": "Users|BarChart3|MapPin|PoundSterling|ShieldAlert|ListChecks", "status": "done|running|queued", "time": "Xm ago|now|queued", "sources": 0-8},
-    ... (generate 5-6 Finn modules — audience, market, location, funding, risk, launch plan)
-  ],
-  "agent_log": [
-    {"text": "Specific assumption or caveat from the analysis", "conf": "High|Medium|Low", "who": "Flora|Finn"},
-    ... (generate 4-6 honest log entries about what the agents are uncertain about)
-  ]
-}
-
-Make descriptions specific to THIS idea, not generic. Log entries should be honest about
-what data was used as a proxy and where confidence is lower.
-"""
-
-
-async def run_finn(idea_profile, conversation) -> dict:
-    """Run all Finn research modules and return combined dashboard data."""
-    # Defensive: pipeline cleans these but belt-and-braces.
-    if not isinstance(idea_profile, dict):
-        idea_profile = {}
-    if not isinstance(conversation, list):
-        conversation = []
-    safe_turns = [t for t in conversation if isinstance(t, dict) and "speaker" in t and "text" in t]
-
-    transcript = "\n".join(
-        f"{'Flora' if t.get('speaker') == 'flora' else 'Founder'}: {t.get('text', '')}"
-        for t in safe_turns
-    )
-    context = (
-        f"Idea Profile:\n"
-        f"Title: {idea_profile.get('title', 'Unknown')}\n"
-        f"Description: {idea_profile.get('subtitle', '')}\n"
-        f"Business type: {idea_profile.get('business_type', '')}\n"
-        f"Stage: {idea_profile.get('stage', '')}\n"
-        f"Revenue: {idea_profile.get('revenue', '')}\n"
-        f"Flora's note: {idea_profile.get('flora_note', '')}\n"
-        f"\nOriginal conversation:\n{transcript}"
+    return (
+        "London startup idea profile. Be specific to THIS idea and the London "
+        "market. Reference real London areas, datasets and economics.\n\n"
+        + "\n".join(lines)
     )
 
-    logger.info("Finn running 6 research modules")
 
-    import asyncio
-    import time
+# ── Module prompts (terse on purpose — keys must match the frontend) ─────────
+# Every prompt ends by demanding a single JSON object and nothing else.
 
-    from ..config import settings
+SYSTEM_AUDIENCE = """You are Finn, a London startup research analyst.
+From the idea profile, produce the Target Audience analysis as ONE JSON object:
+{
+ "audience_confidence": <int 0-100>,
+ "segments": [ {"name","need","pay":"High|Medium|Low","channel","conf":"High|Medium|Low|Low-Medium|Medium-High","icon":"Building2|Users|HeartPulse|CalendarDays|Briefcase|ShoppingCart|Globe|Utensils","tone":"peach|lavender|mint|butter|sky|rose"} ] (3-4, ranked by demand x willingness-to-pay),
+ "personas": [ {"name","title","role","pain","trigger","offer","tone":"peach|lavender|mint|butter","initials"} ] (2),
+ "interview_questions": [ ... ] (5)
+}
+Keep every string under 16 words. Output JSON only."""
 
-    # Per-module timeout + concurrency are configurable. Low concurrency suits
-    # a single-GPU NIM; raise FINN_CONCURRENCY when Finn uses a scalable
-    # gateway. Slow gateways (e.g. openclaw) need a longer timeout.
-    MODULE_TIMEOUT = settings.finn_module_timeout
+SYSTEM_VALIDATION = """You are Finn, a London startup research analyst.
+From the idea profile, produce Market Validation as ONE JSON object:
+{
+ "validation_verdict": "one punchy line with an em dash, e.g. 'Promising — but you'll have to earn it.'",
+ "validation_description": "2 sentences with specific London evidence",
+ "evidence": [ {"signal":"<=8 words","impact":"Positive|Risk|Opportunity|Neutral","conf":"High|Medium|Low","source_name","source_slug":"workplace-zone-statistics|business-demography|census-2021-religion|high-streets-health|tfl-open-data|food-business-est|voa-floorspace|borough-profiles|gla-funding-support|survey-of-londoners|planning-applications|air-quality","tone":"mint|rose|lavender|butter|sky|peach","icon":"TrendingUp|ShieldAlert|Lightbulb|Database|BarChart3|Users"} ] (4),
+ "radar": [ {"label":"Demand","value":0.0-1.0},{"label":"Competition","value":..},{"label":"Cost","value":..},{"label":"Location","value":..},{"label":"Licensing","value":..},{"label":"Operational","value":..},{"label":"Funding","value":..} ] (higher=riskier),
+ "experiments": [ {"title":"<=14 words","impact":"High|Medium|Low","effort":"High|Medium|Low","days":"e.g. 3 days"} ] (4, best impact/effort first)
+}
+Output JSON only."""
+
+SYSTEM_LOCATIONS = """You are Finn, a London location analyst.
+From the idea profile, recommend real London areas as ONE JSON object:
+{
+ "locations": [ {"id":"slug","name","demand":"High|Medium|Medium-High|Low","compete":"High|Medium|Low","transport":"High|Medium|Low","cost":"High|Medium|Low","b2b":"High|Medium|Low","reco":"<=10 words","score":0-100,"x":0-100,"y":0-100,"primary":true|false} ] (4, sorted by score desc, exactly one primary=true)
+}
+x: east London 70-90, central 45-65, west 10-40. y: north 20-35, central 35-55, south 55-75.
+Output JSON only."""
+
+SYSTEM_FINANCIALS = """You are Finn, a London startup finance analyst. GBP only, realistic 2024-25 London rates.
+From the idea profile, produce financials as ONE JSON object:
+{
+ "cost_bands": [ {"title","range":"£Xk – £Yk","subtitle":"<=8 words","tone":"peach|mint|sky|rose","tag":"Recommended|Opportunity|Neutral|Risk","fill":0-100} ] (4, lean to full; Recommended on the band matching their budget),
+ "monthly_assumptions": [ {"row","range":"£X / mo or £X one-off","notes":"<=10 words","icon":"ChefHat|PoundSterling|FileText|Sparkles|Megaphone|ShieldCheck|Truck|Globe|Users"} ] (6-8),
+ "grants": [ {"name","fit":0-100,"why":"<=16 words","notes":"<=10 words","deadline":"Rolling|Quarterly|date","docs":["..."],"tone":"mint|peach|lavender|butter"} ] (3, real UK/London schemes),
+ "funding_readiness": 0-100
+}
+Output JSON only."""
+
+SYSTEM_PLAN = """You are Finn, a London startup planning analyst.
+From the idea profile, produce an action plan as ONE JSON object:
+{
+ "days": [ {"d":"01","title":"<=10 words","status":"done|doing|todo","owner":"You|You + <agent>"} ] (exactly 7; day 01 done, 02 doing, rest todo),
+ "roadmap": [ {"window":"30 days","goal","tone":"peach","detail":["..","..",".."]},{"window":"60 days","goal","tone":"lavender","detail":[..]},{"window":"90 days","goal","tone":"mint","detail":[..]} ],
+ "assets": [ {"title","icon":"ClipboardList|Globe|Mail|FileText|Building2|Presentation|MapPin|Users|BarChart3","tone":"peach|sky|lavender|butter|mint|rose"} ] (6),
+ "tasks": [ {"t":"<=10 words","status":"in_progress|todo","tag":"Recommended|Opportunity|Neutral"} ] (5)
+}
+Realistic for a founder doing this alongside a day job. Output JSON only."""
+
+SYSTEM_COMPETITORS = """You are Finn, a London competitive-analysis agent.
+From the idea profile, assess the competitive landscape as ONE JSON object:
+{
+ "competition_level": "Low|Medium|High",
+ "openness_score": <int 0-100, HIGHER = more open/whitespace (good for the founder)>,
+ "competition_summary": "2 sentences — honest read on how crowded this is in London",
+ "competitors": [ {"name":"real or realistic London/UK player","kind":"Direct|Indirect","what":"<=10 words what they do","edge":"<=10 words their strength","gap":"<=10 words where they fall short","tone":"rose|butter|sky|lavender"} ] (0-4; [] if genuinely none),
+ "your_edges": [ "<=12 words on how this founder can win/differentiate" ] (3-5),
+ "matrix": {
+   "dimensions": [ "<=2 word axis" ] (4-5, e.g. Price, Speed, Halal, B2B, Quality),
+   "players": [
+     {"name":"You","you":true,"cells":["High|Medium|Low|Yes|No|Strong|Weak per dimension"]},
+     {"name":"<competitor>","you":false,"cells":[...]}
+   ] (You first, then up to 3 competitors; cells length === dimensions length)
+ }
+}
+If there are no real competitors, set competitors=[], openness_score high (75-92), and still fill the matrix with You + 1-2 indirect/adjacent players. Output JSON only."""
+
+SYSTEM_AGENTS = """You are Finn. Produce the agent workspace log as ONE JSON object:
+{
+ "flora_modules": [ {"name","desc":"<=12 words","icon":"Mic|MessageSquare|ShieldAlert|Users|Lightbulb","status":"done","time":"Xm ago","sources":0} ] (3),
+ "finn_modules": [ {"name","desc":"<=12 words","icon":"Users|BarChart3|MapPin|PoundSterling|ShieldAlert|ListChecks","status":"done","time":"Xm ago","sources":0-8} ] (5),
+ "agent_log": [ {"text":"<=16 words honest caveat","conf":"High|Medium|Low","who":"Flora|Finn"} ] (4)
+}
+Be specific to this idea. Output JSON only."""
+
+
+# Registry — each entry is one independent, streamable module.
+FINN_MODULES = [
+    {"name": "audience",    "system": SYSTEM_AUDIENCE,    "temp": 0.3, "max_tokens": 2200},
+    {"name": "validation",  "system": SYSTEM_VALIDATION,  "temp": 0.3, "max_tokens": 2600},
+    {"name": "competitors", "system": SYSTEM_COMPETITORS, "temp": 0.3, "max_tokens": 2200},
+    {"name": "locations",   "system": SYSTEM_LOCATIONS,   "temp": 0.3, "max_tokens": 1800},
+    {"name": "financials",  "system": SYSTEM_FINANCIALS,  "temp": 0.3, "max_tokens": 2400},
+    {"name": "plan",        "system": SYSTEM_PLAN,        "temp": 0.3, "max_tokens": 2200},
+    {"name": "agents",      "system": SYSTEM_AGENTS,      "temp": 0.2, "max_tokens": 2200},
+]
+
+FINN_MODULE_BY_NAME = {m["name"]: m for m in FINN_MODULES}
+
+
+async def run_finn_module(module: dict, brief: str) -> dict | None:
+    """Run a single Finn module against the compact brief. Returns the parsed
+    dict, or None on timeout/failure (caller decides how to mark it)."""
+    name = module["name"]
+    start = time.time()
+    logger.info("[finn:%s] starting (max_tokens=%d)", name, module["max_tokens"])
+    try:
+        result = await asyncio.wait_for(
+            chat_json(
+                module["system"], brief,
+                persona="finn",
+                temperature=module["temp"],
+                max_tokens=module["max_tokens"],
+            ),
+            timeout=settings.finn_module_timeout,
+        )
+        logger.info("[finn:%s] OK in %.1fs (%d keys)", name, time.time() - start, len(result))
+        return result
+    except asyncio.TimeoutError:
+        logger.error("[finn:%s] TIMED OUT after %.1fs", name, time.time() - start)
+        return None
+    except Exception as e:  # noqa: BLE001
+        logger.error("[finn:%s] FAILED in %.1fs: %s", name, time.time() - start, e)
+        return None
+
+
+async def refine_section(section_name: str, idea_profile: dict, instruction: str) -> dict | None:
+    """Re-run a single Finn module with an extra founder instruction folded
+    into the brief (e.g. 'look deeper into competitors', 'find more grants')."""
+    module = FINN_MODULE_BY_NAME.get(section_name)
+    if not module:
+        return None
+    brief = build_brief(idea_profile)
+    if instruction:
+        brief += (
+            f"\n\nThe founder specifically asked: \"{instruction}\"\n"
+            "Prioritise that in your output — go deeper, add detail, and address it directly."
+        )
+    return await run_finn_module(module, brief)
+
+
+FINN_QA_SYSTEM = """You are Finn, a sharp London startup analyst answering a founder's
+question about the research you produced for their idea. You are given the idea
+profile and a compact summary of your own findings as JSON context.
+
+Answer in plain text (no JSON, no markdown headings). Be direct, specific and
+concise — 2 to 4 short sentences. Reference concrete numbers, areas, or
+competitors from the context where relevant. If the context doesn't contain the
+answer, say what you'd need to look into next. Never invent data you weren't given."""
+
+
+def _dashboard_digest(dashboard: dict) -> str:
+    """Compact JSON digest of the dashboard for Q&A context (keeps tokens low)."""
+    d = dashboard or {}
+    idea = d.get("idea") or {}
+    def names(lst, key="name", n=4):
+        return [x.get(key) for x in (lst or [])[:n] if isinstance(x, dict) and x.get(key)]
+    digest = {
+        "idea": {k: idea.get(k) for k in ("title", "subtitle", "business_type", "stage", "revenue") if idea.get(k)},
+        "segments": names(d.get("segments")),
+        "verdict": d.get("validation_verdict"),
+        "competition_level": d.get("competition_level"),
+        "openness_score": d.get("openness_score"),
+        "competitors": names(d.get("competitors")),
+        "locations": [
+            {"name": l.get("name"), "score": l.get("score")}
+            for l in (d.get("locations") or [])[:4] if isinstance(l, dict)
+        ],
+        "funding_readiness": d.get("funding_readiness"),
+        "grants": names(d.get("grants")),
+    }
+    return json.dumps({k: v for k, v in digest.items() if v}, ensure_ascii=False)
+
+
+async def answer_question(dashboard: dict, question: str) -> str:
+    """Finn answers a question about the generated insights. No mutation."""
+    context = f"CONTEXT:\n{_dashboard_digest(dashboard)}\n\nQUESTION: {question}"
+    return await chat_text(FINN_QA_SYSTEM, context, persona="finn", temperature=0.3, max_tokens=600)
+
+
+async def run_finn(idea_profile, conversation=None) -> dict:
+    """Run all Finn modules and merge into one dashboard dict.
+
+    Kept for callers that want the whole thing at once. The streaming path
+    in pipeline.run_streaming_pipeline is preferred for the live UI.
+    """
+    brief = build_brief(idea_profile if isinstance(idea_profile, dict) else {})
     semaphore = asyncio.Semaphore(max(1, settings.finn_concurrency))
 
-    async def _run_module(label, system, temp, max_tokens):
+    async def _guarded(module):
         async with semaphore:
-            start = time.time()
-            logger.info("[finn:%s] starting (max_tokens=%d, temp=%s)", label, max_tokens, temp)
-            try:
-                result = await asyncio.wait_for(
-                    chat_json(system, context, persona="finn", temperature=temp, max_tokens=max_tokens),
-                    timeout=MODULE_TIMEOUT,
-                )
-                elapsed = time.time() - start
-                logger.info("[finn:%s] OK in %.1fs (%d top-level keys)", label, elapsed, len(result))
-                return result
-            except asyncio.TimeoutError:
-                elapsed = time.time() - start
-                logger.error("[finn:%s] TIMED OUT after %.1fs", label, elapsed)
-                return None
-            except Exception as e:
-                elapsed = time.time() - start
-                logger.error("[finn:%s] FAILED in %.1fs: %s", label, elapsed, e)
-                return None
+            return await run_finn_module(module, brief)
 
-    # max_tokens needs to cover thinking AND JSON output for a reasoning model.
-    # Too low → JSON gets truncated mid-stream and parsing fails. 2500–3500
-    # is the sweet spot for these prompts.
-    results = await asyncio.gather(
-        _run_module("audience",   SYSTEM_AUDIENCE,   0.3, max_tokens=3000),
-        _run_module("validation", SYSTEM_VALIDATION, 0.3, max_tokens=3500),
-        _run_module("locations",  SYSTEM_LOCATIONS,  0.3, max_tokens=2500),
-        _run_module("financials", SYSTEM_FINANCIALS, 0.3, max_tokens=3000),
-        _run_module("plan",       SYSTEM_PLAN,       0.3, max_tokens=3000),
-        _run_module("agents",     SYSTEM_AGENTS,     0.2, max_tokens=2000),
-    )
-
-    dashboard = {}
-    succeeded = 0
-    for label, result in zip(["audience","validation","locations","financials","plan","agents"], results):
-        if result is not None:
+    results = await asyncio.gather(*[_guarded(m) for m in FINN_MODULES])
+    dashboard, ok = {}, 0
+    for module, result in zip(FINN_MODULES, results):
+        if result:
             dashboard.update(result)
-            succeeded += 1
-    logger.info("[finn] %d/6 modules succeeded", succeeded)
-
+            ok += 1
+    logger.info("[finn] %d/%d modules succeeded", ok, len(FINN_MODULES))
     return dashboard
