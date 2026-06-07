@@ -1,446 +1,371 @@
 import React, { useEffect, useRef, useState } from 'react'
-import {
-  Mic, X, ArrowRight, ArrowLeft, Loader2, AlertTriangle, MessageSquare,
-  Sparkles, Search, HelpCircle, Users, LineChart, Swords, MapPin,
-  PoundSterling, ListChecks, Send, Volume2, VolumeX,
-} from 'lucide-react'
+import { Mic, X, ArrowLeft, Loader2, AlertTriangle, Send, Check, Volume2, VolumeX, Sparkles } from 'lucide-react'
 import { AgentFace } from './AgentFace'
 import { api } from '../lib/api'
 import { speakWithElevenLabs } from '../lib/voiceApi'
 import { createRecorder, transcribe, isRecordingSupported, requestMicPermission } from '../lib/recorder'
 
-// Areas Finn can dig deeper on (maps to a backend section key).
-const FINN_AREAS = [
-  { key: 'audience',    label: 'Who buys',         icon: Users },
-  { key: 'validation',  label: 'Worth doing?',     icon: LineChart },
-  { key: 'competitors', label: 'Competition',      icon: Swords },
-  { key: 'locations',   label: 'Where',            icon: MapPin },
-  { key: 'financials',  label: 'Money & grants',   icon: PoundSterling },
-  { key: 'plan',        label: 'Next 7 days',      icon: ListChecks },
-]
-
-const FLORA_IDEAS = [
-  'I have a smaller budget than I said.',
-  'Actually, I want to avoid a physical storefront.',
-  'Focus on B2B customers, not consumers.',
-  'My real target customer is different — let me explain.',
-]
-
-const FINN_QUESTIONS = [
-  'Why is this my top location?',
-  "What's my single biggest risk?",
-  'Which grant should I apply for first?',
-  'How do I beat my main competitor?',
-]
-
-function Waveform({ active, level = 0 }) {
-  return (
-    <div className="flex h-10 items-end justify-center gap-[3px]">
-      {Array.from({ length: 26 }).map((_, i) => {
-        const center = 1 - Math.abs(i - 12.5) / 13
-        const base = 20 + ((i * 13) % 65)
-        const dyn = active ? base + level * 40 * center : base * 0.25
-        return (
-          <span key={i} className={`w-[3px] rounded-full bg-sage-400 ${active ? 'animate-wave' : 'opacity-25'}`}
-            style={{ height: `${dyn}%`, animationDelay: `${(i % 11) * 60}ms`, animationDuration: `${750 + (i % 5) * 110}ms` }} />
-        )
-      })}
-    </div>
-  )
+const OPENERS = {
+  flora: "Hey! What's on your mind about your idea? Tell me, or push back on anything I've assumed.",
+  finn: "Ask me anything about your plan — or tell me what to dig into deeper.",
+}
+const STARTERS = {
+  flora: ['Challenge one of your assumptions', 'I want to change direction', 'My budget is different'],
+  finn: ['Why is this my top location?', "What's my biggest risk?", 'Dig deeper on competitors'],
 }
 
-const looksLikeQuestion = (t) =>
-  /\?\s*$/.test(t) || /^(why|how|what|which|who|when|where|is|are|should|can|could|do|does)\b/i.test(t.trim())
-
 export default function VoiceAssistant({ open, onClose, prefill, discoveryId, onRefineComplete }) {
-  const [agent, setAgent] = useState(null)        // null | 'flora' | 'finn'
-  const [finnMode, setFinnMode] = useState('ask') // 'ask' | 'deeper'
-  const [area, setArea] = useState('competitors')
+  const [agent, setAgent] = useState(null)
+  const [messages, setMessages] = useState([])      // { role:'user'|'agent', text }
   const [text, setText] = useState('')
-  const [phase, setPhase] = useState('idle')      // idle | recording | transcribing | sending | answered | sent | error
-  const [answer, setAnswer] = useState('')
+  const [phase, setPhase] = useState('idle')         // idle | recording | transcribing | thinking | applying
+  const [proposal, setProposal] = useState(null)     // { change_summary, apply }
+  const [speaking, setSpeaking] = useState(false)
   const [errMsg, setErrMsg] = useState('')
   const [micLevel, setMicLevel] = useState(0)
-  const [speaking, setSpeaking] = useState(false)
-  const recorderRef = useRef(null)
+  const recRef = useRef(null)
   const vadAcRef = useRef(null)
   const vadFrameRef = useRef(null)
-  const answerAudioRef = useRef(null)
+  const audioRef = useRef(null)
+  const threadRef = useRef(null)
+  const revealRafRef = useRef(null)
+  const msgIdRef = useRef(0)
   const micSupported = isRecordingSupported()
 
-  // Speak a piece of text in Finn's voice (best-effort).
-  const stopAnswerAudio = () => {
-    if (answerAudioRef.current) { try { answerAudioRef.current.pause() } catch {} answerAudioRef.current = null }
-    setSpeaking(false)
-  }
-  const speakAnswer = async (txt) => {
-    stopAnswerAudio()
-    if (!txt) return
-    try {
-      setSpeaking(true)
-      const blob = await speakWithElevenLabs({ text: txt, persona: 'finn' })
-      const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      answerAudioRef.current = audio
-      audio.onended = () => { URL.revokeObjectURL(url); setSpeaking(false) }
-      audio.onerror = () => setSpeaking(false)
-      await audio.play()
-    } catch { setSpeaking(false) }
-  }
+  const reset = () => { setMessages([]); setText(''); setProposal(null); setErrMsg(''); setPhase('idle') }
 
-  // Reset + route any prefilled command. prefill = string | { text, agent, mode }.
+  // Open + route any prefilled command.
   useEffect(() => {
     if (!open) return
-    setPhase('idle'); setErrMsg(''); setAnswer(''); setMicLevel(0)
+    stopAudio()
     const pf = (prefill && typeof prefill === 'object') ? prefill : (prefill ? { text: prefill } : null)
     if (pf?.text) {
-      setText(pf.text)
-      if (pf.agent === 'flora') {
-        setAgent('flora')
-      } else if (pf.agent === 'finn') {
-        setAgent('finn'); setFinnMode(pf.mode || 'ask')
-      } else if (looksLikeQuestion(pf.text)) {
-        setAgent('finn'); setFinnMode('ask')
-      } else {
-        setAgent('flora')
-      }
+      const who = pf.agent === 'finn' ? 'finn' : 'flora'
+      setAgent(who)
+      reset()
+      // auto-send the seeded message
+      setTimeout(() => sendMessage(pf.text, who, []), 60)
+    } else if (pf?.agent === 'flora' || pf?.agent === 'finn') {
+      // Open straight into a chat with the requested agent (e.g. tapping a face).
+      const who = pf.agent
+      setAgent(who); reset(); setPhase('thinking')
+      sayAsAgent(OPENERS[who], who, () => setPhase('idle'))
     } else {
-      setText(''); setAgent(null)
+      setAgent(null); reset()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, prefill])
 
+  useEffect(() => { threadRef.current?.scrollTo({ top: 9e9, behavior: 'smooth' }) }, [messages, phase])
+
+  // ── TTS + synced text reveal ──
+  const cancelReveal = () => {
+    if (revealRafRef.current) { cancelAnimationFrame(revealRafRef.current); revealRafRef.current = null }
+  }
+  // Instantly finish revealing whatever is mid-stream (on stop/close).
+  const revealAll = () => setMessages(m => m.map(mm => (mm.reveal != null && mm.reveal < (mm.text?.length || 0)) ? { ...mm, reveal: mm.text.length } : mm))
+  const stopAudio = () => {
+    cancelReveal()
+    if (audioRef.current) { try { audioRef.current.pause() } catch {} audioRef.current = null }
+    revealAll()
+    setSpeaking(false)
+  }
+
+  // Add an agent message and speak it, revealing the text in lockstep with the
+  // voice so the words appear as she says them — and the face animates to the
+  // real audio, not the text. Falls back to plain text if TTS is unavailable.
+  const sayAsAgent = async (txt, who, onStart) => {
+    stopAudio()
+    if (!txt) return
+    const id = ++msgIdRef.current
+    let started = false
+    const show = (animate) => {
+      if (started) return
+      started = true
+      setMessages(m => [...m, { role: 'agent', text: txt, id, reveal: animate ? 0 : txt.length }])
+      onStart?.()
+    }
+    let url, audio
+    try {
+      const blob = await speakWithElevenLabs({ text: txt, persona: who })
+      url = URL.createObjectURL(blob)
+      audio = new Audio(url)
+      audioRef.current = audio
+    } catch {
+      show(false)   // no voice — just show the text
+      return
+    }
+    const total = txt.length
+    const finish = () => {
+      cancelReveal()
+      setMessages(m => m.map(mm => mm.id === id ? { ...mm, reveal: total } : mm))
+      setSpeaking(false)
+      if (url) { URL.revokeObjectURL(url); url = null }
+    }
+    audio.onplay = () => {
+      setSpeaking(true)
+      show(true)
+      const durMs = (isFinite(audio.duration) && audio.duration > 0) ? audio.duration * 1000 : total * 55
+      const t0 = performance.now()
+      cancelReveal()
+      const step = () => {
+        const frac = Math.min(1, (performance.now() - t0) / durMs)
+        const n = Math.max(1, Math.floor(frac * total))
+        setMessages(m => m.map(mm => mm.id === id ? { ...mm, reveal: n } : mm))
+        if (frac < 1) revealRafRef.current = requestAnimationFrame(step)
+      }
+      revealRafRef.current = requestAnimationFrame(step)
+    }
+    audio.onended = finish
+    audio.onerror = () => { show(true); finish() }
+    try {
+      await audio.play()
+    } catch {
+      show(true); finish()   // autoplay blocked — reveal text anyway
+    }
+  }
+
+  // ── Mic ──
   const stopVad = () => {
     if (vadFrameRef.current) { cancelAnimationFrame(vadFrameRef.current); vadFrameRef.current = null }
     if (vadAcRef.current) { vadAcRef.current.close().catch(() => {}); vadAcRef.current = null }
     setMicLevel(0)
   }
-
   const startMic = async () => {
     if (!micSupported || phase !== 'idle') return
     setErrMsg('')
     try {
       const stream = await requestMicPermission()
-      const rec = await createRecorder({ stream })
-      recorderRef.current = { rec, stream }
+      const rec = await createRecorder({ stream }); recRef.current = { rec, stream }
       setPhase('recording')
       const AC = window.AudioContext || window.webkitAudioContext
       const ac = new AC(); vadAcRef.current = ac
-      const source = ac.createMediaStreamSource(stream)
-      const analyser = ac.createAnalyser(); analyser.fftSize = 256
-      source.connect(analyser)
-      const data = new Uint8Array(analyser.frequencyBinCount)
-      const tick = () => {
-        analyser.getByteFrequencyData(data)
-        let sum = 0; for (let i = 0; i < data.length; i++) sum += data[i]
-        setMicLevel(Math.min(1, (sum / data.length) / 80))
-        vadFrameRef.current = requestAnimationFrame(tick)
-      }
+      const src = ac.createMediaStreamSource(stream); const an = ac.createAnalyser(); an.fftSize = 256; src.connect(an)
+      const data = new Uint8Array(an.frequencyBinCount)
+      const tick = () => { an.getByteFrequencyData(data); let s = 0; for (let i = 0; i < data.length; i++) s += data[i]; setMicLevel(Math.min(1, (s / data.length) / 80)); vadFrameRef.current = requestAnimationFrame(tick) }
       vadFrameRef.current = requestAnimationFrame(tick)
     } catch (e) { setErrMsg(e?.message || 'Microphone unavailable') }
   }
-
   const stopMic = async () => {
-    const ref = recorderRef.current
-    if (!ref) return
-    recorderRef.current = null; stopVad(); setPhase('transcribing')
+    const ref = recRef.current; if (!ref) return
+    recRef.current = null; stopVad(); setPhase('transcribing')
     try {
-      const blob = await ref.rec.stop()
-      ref.stream.getTracks().forEach(t => t.stop())
+      const blob = await ref.rec.stop(); ref.stream.getTracks().forEach(t => t.stop())
       const t = await transcribe(blob)
-      if (t) setText(prev => (prev ? `${prev} ${t}` : t))
-      setPhase('idle')
+      setText(prev => (prev ? `${prev} ${t}` : t)); setPhase('idle')
     } catch (e) { setErrMsg(e?.message || "Couldn't catch that"); setPhase('idle') }
   }
 
   useEffect(() => {
     if (!open) {
-      stopVad(); stopAnswerAudio()
-      if (recorderRef.current) {
-        try { recorderRef.current.rec.cancel() } catch {}
-        try { recorderRef.current.stream.getTracks().forEach(t => t.stop()) } catch {}
-        recorderRef.current = null
-      }
+      stopVad(); stopAudio()
+      if (recRef.current) { try { recRef.current.rec.cancel() } catch {} ; try { recRef.current.stream.getTracks().forEach(t => t.stop()) } catch {} ; recRef.current = null }
     }
   }, [open])
 
-  // ── Actions ──
-  const submitFloraUpdate = async () => {
-    const cmd = text.trim()
-    if (!cmd || !discoveryId) return
-    setPhase('sending'); setErrMsg('')
+  // ── Send a chat turn ──
+  const sendMessage = async (raw, who = agent, base = messages) => {
+    const t = (raw ?? text).trim()
+    if (!t || !discoveryId || !who) return
+    stopAudio()
+    setText(''); setErrMsg(''); setProposal(null)
+    const next = [...base, { role: 'user', text: t }]
+    setMessages(next)
+    setPhase('thinking')
     try {
-      await api.refineDiscovery(discoveryId, cmd, 'flora')
-      setPhase('sent')
-      await onRefineComplete?.(cmd)
-      setTimeout(() => onClose?.(), 1500)
-    } catch (e) { setErrMsg(e?.message || 'Could not update'); setPhase('error') }
+      const res = await api.chatWithAgent(discoveryId, who, next)
+      const reply = res.reply || '…'
+      // Keep the thinking dots until she actually starts speaking, then stream
+      // the text in sync with her voice.
+      await sayAsAgent(reply, who, () => setPhase('idle'))
+      if (res.proposes_change && res.apply && res.apply.kind !== 'none') {
+        setProposal({ summary: res.change_summary || 'Apply this change', apply: res.apply })
+      }
+    } catch (e) {
+      setErrMsg(e?.message || 'Could not reach the agent'); setPhase('idle')
+    }
   }
 
-  const submitFinnDeeper = async () => {
-    if (!discoveryId) return
-    setPhase('sending'); setErrMsg('')
+  const applyProposal = async () => {
+    if (!proposal || !discoveryId) return
+    setPhase('applying'); setErrMsg('')
     try {
-      await api.refineSection(discoveryId, area, text.trim())
-      setPhase('sent')
-      await onRefineComplete?.(`Finn: dig deeper on ${area}`)
-      setTimeout(() => onClose?.(), 1500)
-    } catch (e) { setErrMsg(e?.message || 'Could not start'); setPhase('error') }
-  }
-
-  const submitFinnAsk = async () => {
-    const q = text.trim()
-    if (!q || !discoveryId) return
-    setPhase('sending'); setErrMsg(''); setAnswer('')
-    try {
-      const { answer } = await api.askFinn(discoveryId, q)
-      const a = answer || "Finn didn't have an answer for that."
-      setAnswer(a)
-      setPhase('answered')
-      speakAnswer(a) // Finn reads it aloud
-    } catch (e) { setErrMsg(e?.message || 'Finn could not answer'); setPhase('error') }
+      const { kind, section, command } = proposal.apply
+      if (kind === 'section' && section) await api.refineSection(discoveryId, section, command || '')
+      else await api.refineDiscovery(discoveryId, command || proposal.summary, agent)
+      setMessages(m => [...m, { role: 'system', text: `Applied — your plan is updating.` }])
+      setProposal(null); setPhase('idle')
+      await onRefineComplete?.(proposal.summary)
+    } catch (e) {
+      setErrMsg(e?.message || 'Could not apply'); setPhase('idle')
+    }
   }
 
   if (!open) return null
-  const busy = phase === 'transcribing' || phase === 'sending'
+  const thinking = phase === 'thinking'
+  const busy = phase === 'transcribing' || phase === 'applying'
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center sm:p-6">
-      <div className="absolute inset-0 bg-forest-700/30 backdrop-blur-sm" onClick={() => phase !== 'sending' && onClose?.()} />
+      <div className="absolute inset-0 bg-forest-700/30 backdrop-blur-sm" onClick={() => phase !== 'applying' && onClose?.()} />
 
-      <div className="relative z-10 w-full max-w-[580px] overflow-hidden rounded-3xl border border-black/[0.06] bg-cream-50 shadow-lift">
+      <div className="relative z-10 flex max-h-[88vh] w-full max-w-[560px] flex-col overflow-hidden rounded-3xl border border-black/[0.06] bg-cream-50 shadow-lift">
         <div className="pointer-events-none absolute -right-20 -top-24 h-60 w-60 rounded-full gradient-soft-peach opacity-50 blur-2xl" />
         <div className="pointer-events-none absolute -left-16 -bottom-16 h-48 w-48 rounded-full gradient-soft-mint opacity-50 blur-2xl" />
 
         {/* Header */}
-        <div className="relative flex items-center justify-between px-6 pt-5">
+        <div className="relative flex items-center justify-between px-5 pt-4">
           <div className="flex items-center gap-2.5">
-            {agent && phase !== 'sent' && (
-              <button onClick={() => { setAgent(null); setText(''); setAnswer(''); setPhase('idle') }} className="grid h-7 w-7 place-items-center rounded-lg text-ink-500 hover:bg-cream-100 hover:text-forest-500">
+            {agent && (
+              <button onClick={() => { setAgent(null); reset(); stopAudio() }} className="grid h-7 w-7 place-items-center rounded-lg text-ink-500 hover:bg-cream-100 hover:text-forest-500">
                 <ArrowLeft size={16} />
               </button>
             )}
             <div className="leading-tight">
               <div className="text-[15px] font-semibold text-forest-500">
-                {!agent ? 'Who do you want to talk to?' : agent === 'flora' ? 'Update your idea with Flora' : 'Work with Finn'}
+                {!agent ? 'Who do you want to talk to?' : agent === 'flora' ? 'Talking with Flora' : 'Talking with Finn'}
               </div>
               <div className="text-[11.5px] text-ink-500">
-                {!agent ? 'Two advisors, two jobs.' : agent === 'flora' ? 'Changes the idea — the whole plan rebuilds.' : 'Dig deeper or ask about the findings.'}
+                {!agent ? 'Two advisors. Chat, debate, decide together.' : agent === 'flora' ? 'She owns your idea — she may push back.' : 'He owns the research — ask or challenge him.'}
               </div>
             </div>
           </div>
-          <button className="text-ink-400 hover:text-forest-500" onClick={() => onClose?.()} disabled={phase === 'sending'}>
+          <button className="text-ink-400 hover:text-forest-500" onClick={() => onClose?.()} disabled={phase === 'applying'}>
             <X size={18} />
           </button>
         </div>
 
-        {/* ── Sent confirmation ── */}
-        {phase === 'sent' ? (
-          <div className="relative flex flex-col items-center px-6 py-10 text-center">
-            <AgentFace who={agent === 'flora' ? 'flora' : 'finn'} state="happy" size={96} />
-            <h3 className="mt-4 display text-[24px] leading-tight text-forest-500">On it.</h3>
-            <p className="mt-2 max-w-[360px] text-[13.5px] leading-relaxed text-ink-500">
-              {agent === 'flora'
-                ? 'Flora is updating your idea — the plan is rebuilding now. Watch the pages refresh.'
-                : `Finn is re-researching ${FINN_AREAS.find(a => a.key === area)?.label || 'that area'}. It'll refresh in a moment.`}
-            </p>
-          </div>
-        ) : !agent ? (
-          /* ── Agent chooser ── */
-          <div className="relative grid grid-cols-1 gap-3 px-6 py-6 sm:grid-cols-2">
-            <button
-              onClick={() => { setAgent('flora'); setPhase('idle') }}
-              className="group rounded-3xl border border-black/[0.06] bg-white p-5 text-left transition-all hover:border-peach-200 hover:shadow-lift"
-            >
-              <AgentFace who="flora" state="idle" size={84} />
-              <div className="mt-3 flex items-center gap-2">
-                <span className="display text-[19px] text-forest-500">Flora</span>
-                <span className="rounded-full bg-peach-100 px-2 py-0.5 text-[10px] font-medium text-peach-600">Discovery</span>
-              </div>
-              <p className="mt-1.5 text-[12.5px] leading-snug text-ink-500">
-                Update your idea, add detail, or change direction. She rebuilds the whole plan.
-              </p>
-            </button>
-            <button
-              onClick={() => { setAgent('finn'); setFinnMode('ask'); setPhase('idle') }}
-              className="group rounded-3xl border border-black/[0.06] bg-white p-5 text-left transition-all hover:border-sage-300 hover:shadow-lift"
-            >
-              <AgentFace who="finn" state="idle" size={84} />
-              <div className="mt-3 flex items-center gap-2">
-                <span className="display text-[19px] text-forest-500">Finn</span>
-                <span className="rounded-full bg-sage-100 px-2 py-0.5 text-[10px] font-medium text-forest-500">Research</span>
-              </div>
-              <p className="mt-1.5 text-[12.5px] leading-snug text-ink-500">
-                Dig deeper on an area, add context, or ask about anything he found.
-              </p>
-            </button>
-          </div>
-        ) : agent === 'flora' ? (
-          /* ── Flora: update the idea ── */
-          <div className="relative px-6 pb-6 pt-4">
-            <MicTextInput
-              text={text} setText={setText} phase={phase}
-              micSupported={micSupported} micLevel={micLevel}
-              onStart={startMic} onStop={stopMic}
-              placeholder="e.g. I actually have £5k and want to start with pop-ups"
-            />
-            <ChipRow title="Common updates" chips={FLORA_IDEAS} onPick={setText} />
-            {errMsg && <ErrorNote msg={errMsg} />}
-            <div className="mt-5 flex items-center justify-end gap-3">
-              <button onClick={() => onClose?.()} className="btn-ghost text-[12.5px]">Cancel</button>
-              <button onClick={submitFloraUpdate} disabled={!text.trim() || busy || !discoveryId} className="btn-coral text-[13px] disabled:opacity-40">
-                {phase === 'sending' ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                Update my idea
+        {!agent ? (
+          /* ── Chooser ── */
+          <div className="relative grid grid-cols-1 gap-3 px-5 py-6 sm:grid-cols-2">
+            {['flora', 'finn'].map(who => (
+              <button key={who} onClick={() => { setAgent(who); reset(); setPhase('thinking'); sayAsAgent(OPENERS[who], who, () => setPhase('idle')) }}
+                className={`group rounded-3xl border border-black/[0.06] bg-white p-5 text-left transition-all hover:shadow-lift ${who === 'flora' ? 'hover:border-peach-200' : 'hover:border-sage-300'}`}>
+                <AgentFace who={who} state="idle" size={88} />
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="display text-[19px] text-forest-500">{who === 'flora' ? 'Flora' : 'Finn'}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${who === 'flora' ? 'bg-peach-100 text-peach-600' : 'bg-sage-100 text-forest-500'}`}>
+                    {who === 'flora' ? 'Discovery' : 'Research'}
+                  </span>
+                </div>
+                <p className="mt-1.5 text-[12.5px] leading-snug text-ink-500">
+                  {who === 'flora' ? 'Reshape your idea — she rebuilds the plan once you both agree.' : 'Question or challenge his findings; he can dig deeper.'}
+                </p>
               </button>
-            </div>
+            ))}
           </div>
         ) : (
-          /* ── Finn: deeper / ask ── */
-          <div className="relative px-6 pb-6 pt-4">
-            <div className="mb-4 inline-flex rounded-full border border-black/[0.06] bg-white p-1">
-              <button onClick={() => { setFinnMode('ask'); setAnswer(''); setPhase('idle') }}
-                className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition-colors ${finnMode === 'ask' ? 'bg-forest-500 text-cream-50' : 'text-ink-600 hover:bg-cream-50'}`}>
-                <HelpCircle size={13} /> Ask a question
-              </button>
-              <button onClick={() => { setFinnMode('deeper'); setAnswer(''); setPhase('idle') }}
-                className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition-colors ${finnMode === 'deeper' ? 'bg-forest-500 text-cream-50' : 'text-ink-600 hover:bg-cream-50'}`}>
-                <Search size={13} /> Dig deeper
-              </button>
+          /* ── Chat ── */
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            {/* agent face strip */}
+            <div className="flex items-center gap-3 px-5 pt-3">
+              <AgentFace who={agent} state={thinking ? 'thinking' : speaking ? 'speaking' : 'idle'} size={64} />
+              <div className="text-[12px] text-ink-500">
+                {thinking ? `${agent === 'flora' ? 'Flora' : 'Finn'} is thinking…` : speaking ? 'Speaking…' : 'Listening for you.'}
+              </div>
             </div>
 
-            {finnMode === 'deeper' ? (
-              <>
-                <div className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500 mb-2">Which area?</div>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {FINN_AREAS.map(({ key, label, icon: Icon }) => (
-                    <button key={key} onClick={() => setArea(key)}
-                      className={`flex items-center gap-2 rounded-2xl border px-3 py-2.5 text-left text-[12.5px] font-medium transition-all ${area === key ? 'border-sage-300 bg-sage-50 text-forest-500 shadow-soft' : 'border-black/[0.06] bg-white text-forest-500 hover:bg-cream-50'}`}>
-                      <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-xl ${area === key ? 'bg-sage-100 text-forest-500' : 'bg-cream-100 text-sage-500'}`}>
-                        <Icon size={14} />
-                      </span>
-                      {label}
+            {/* thread */}
+            <div ref={threadRef} className="relative mt-2 flex-1 space-y-3 overflow-y-auto px-5 py-3" style={{ minHeight: 180 }}>
+              {messages.map((m, i) => (
+                m.role === 'system' ? (
+                  <div key={i} className="flex items-center justify-center">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-100 px-3 py-1 text-[11.5px] font-medium text-forest-500">
+                      <Check size={12} /> {m.text}
+                    </span>
+                  </div>
+                ) : (
+                  <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-[14px] leading-snug ${m.role === 'user' ? 'bg-forest-500 text-cream-50' : 'bg-white text-forest-500 shadow-soft'}`}>
+                      {m.reveal != null ? m.text.slice(0, m.reveal) : m.text}
+                      {m.reveal != null && m.reveal < m.text.length && (
+                        <span className="ml-0.5 inline-block h-3.5 w-[2px] -translate-y-[1px] animate-breathe bg-sage-400 align-middle" />
+                      )}
+                    </div>
+                  </div>
+                )
+              ))}
+              {thinking && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl bg-white px-3.5 py-3 shadow-soft">
+                    <span className="inline-flex gap-1">
+                      {[0, 1, 2].map(i => <span key={i} className="h-1.5 w-1.5 rounded-full bg-sage-400 animate-breathe" style={{ animationDelay: `${i * 150}ms` }} />)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* proposal / apply */}
+            {proposal && (
+              <div className="relative mx-5 mb-2 rounded-2xl border border-peach-200 bg-peach-50 p-3.5">
+                <div className="flex items-start gap-2">
+                  <Sparkles size={14} className="mt-0.5 shrink-0 text-peach-500" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-peach-600">Proposed change</div>
+                    <div className="mt-0.5 text-[13.5px] text-forest-500">{proposal.summary}</div>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  <button onClick={() => setProposal(null)} className="btn-ghost text-[12px]">Not yet</button>
+                  <button onClick={applyProposal} disabled={phase === 'applying'} className="btn-coral text-[12.5px]">
+                    {phase === 'applying' ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />} Apply &amp; update plan
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* starters (only before the founder has spoken) */}
+            {messages.filter(m => m.role === 'user').length === 0 && !thinking && (
+              <div className="relative px-5 pb-1">
+                <div className="flex flex-wrap gap-1.5">
+                  {STARTERS[agent].map(s => (
+                    <button key={s} onClick={() => sendMessage(s)} className="rounded-full border border-black/[0.06] bg-white px-3 py-1.5 text-[11.5px] text-forest-500 hover:bg-cream-50">
+                      {s}
                     </button>
                   ))}
                 </div>
-                <div className="mt-3">
-                  <MicTextInput
-                    text={text} setText={setText} phase={phase}
-                    micSupported={micSupported} micLevel={micLevel}
-                    onStart={startMic} onStop={stopMic}
-                    placeholder="What should Finn look into? (optional) e.g. find more delivery-only rivals"
-                    rows={2}
-                  />
-                </div>
-                {errMsg && <ErrorNote msg={errMsg} />}
-                <div className="mt-4 flex items-center justify-end gap-3">
-                  <button onClick={() => onClose?.()} className="btn-ghost text-[12.5px]">Cancel</button>
-                  <button onClick={submitFinnDeeper} disabled={busy || !discoveryId} className="btn-forest text-[13px] disabled:opacity-40">
-                    {phase === 'sending' ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                    Dig deeper on {FINN_AREAS.find(a => a.key === area)?.label}
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <MicTextInput
-                  text={text} setText={setText} phase={phase}
-                  micSupported={micSupported} micLevel={micLevel}
-                  onStart={startMic} onStop={stopMic}
-                  placeholder="Ask Finn anything about your plan…"
-                  onEnter={submitFinnAsk}
-                />
-                {answer ? (
-                  <div className="mt-4 rounded-2xl border border-sage-200 bg-sage-50 p-4">
-                    <div className="mb-1.5 flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-[10.5px] font-medium uppercase tracking-[0.16em] text-forest-500">
-                        <MessageSquare size={11} /> Finn
-                        {speaking && (
-                          <span className="inline-flex items-end gap-[2px]">
-                            {[0, 1, 2].map(i => (
-                              <span key={i} className="w-[2px] rounded-full bg-sage-500 animate-wave" style={{ height: 8, animationDelay: `${i * 120}ms` }} />
-                            ))}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => (speaking ? stopAnswerAudio() : speakAnswer(answer))}
-                        className="grid h-7 w-7 place-items-center rounded-lg text-ink-400 hover:bg-white hover:text-forest-500"
-                        title={speaking ? 'Stop' : 'Play again'}
-                      >
-                        {speaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                      </button>
-                    </div>
-                    <p className="text-[14px] leading-relaxed text-forest-500">{answer}</p>
-                  </div>
-                ) : (
-                  <ChipRow title="Popular questions" chips={FINN_QUESTIONS} onPick={setText} />
-                )}
-                {errMsg && <ErrorNote msg={errMsg} />}
-                <div className="mt-4 flex items-center justify-end gap-3">
-                  <button onClick={() => onClose?.()} className="btn-ghost text-[12.5px]">Close</button>
-                  <button onClick={submitFinnAsk} disabled={!text.trim() || busy || !discoveryId} className="btn-forest text-[13px] disabled:opacity-40">
-                    {phase === 'sending' ? <Loader2 size={14} className="animate-spin" /> : answer ? <Send size={14} /> : <HelpCircle size={14} />}
-                    {answer ? 'Ask another' : 'Ask Finn'}
-                  </button>
-                </div>
-              </>
+              </div>
             )}
+
+            {errMsg && (
+              <div className="relative mx-5 mb-2 flex items-start gap-2 rounded-xl bg-butter-100 border border-butter-200 px-3 py-2 text-[12px] text-ink-700">
+                <AlertTriangle size={12} className="mt-0.5 shrink-0 text-butter-300" /> {errMsg}
+              </div>
+            )}
+
+            {/* input */}
+            <div className="relative border-t border-black/[0.05] px-5 py-3">
+              <div className="flex items-end gap-2 rounded-2xl bg-white px-3.5 py-2.5 shadow-soft">
+                <textarea
+                  value={text}
+                  onChange={e => setText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() } }}
+                  placeholder={`Message ${agent === 'flora' ? 'Flora' : 'Finn'}…`}
+                  rows={1}
+                  className="flex-1 resize-none bg-transparent text-[14px] leading-snug text-forest-500 placeholder:text-ink-300 outline-none"
+                />
+                {speaking && (
+                  <button onClick={stopAudio} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-cream-100 text-forest-500 hover:bg-cream-200" title="Stop voice">
+                    <VolumeX size={14} />
+                  </button>
+                )}
+                {micSupported && (
+                  <button onClick={phase === 'recording' ? stopMic : startMic} disabled={busy || thinking}
+                    className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${phase === 'recording' ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-cream-100 text-forest-500 hover:bg-cream-200'}`}
+                    title={phase === 'recording' ? 'Stop & transcribe' : 'Tap to talk'}>
+                    {phase === 'transcribing' ? <Loader2 size={14} className="animate-spin" /> : phase === 'recording' ? <span className="h-3.5 w-3.5 rounded-[3px] bg-white" /> : <Mic size={14} />}
+                  </button>
+                )}
+                <button onClick={() => sendMessage()} disabled={!text.trim() || busy || thinking}
+                  className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-forest-500 text-white hover:bg-forest-600 disabled:opacity-40" title="Send">
+                  <Send size={14} />
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-// Shared mic + textarea input.
-function MicTextInput({ text, setText, phase, micSupported, micLevel, onStart, onStop, placeholder, rows = 2, onEnter }) {
-  const recording = phase === 'recording'
-  const transcribing = phase === 'transcribing'
-  return (
-    <div className="rounded-2xl bg-white px-3.5 py-3 shadow-soft">
-      <div className="flex items-start gap-2">
-        <textarea
-          value={text}
-          onChange={e => setText(e.target.value)}
-          onKeyDown={e => { if (onEnter && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onEnter() } }}
-          placeholder={placeholder}
-          rows={rows}
-          className="flex-1 resize-none bg-transparent text-[14px] leading-snug text-forest-500 placeholder:text-ink-300 outline-none"
-        />
-        {micSupported && (
-          <button
-            onClick={recording ? onStop : onStart}
-            disabled={transcribing}
-            className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl transition-colors ${recording ? 'bg-rose-500 text-white hover:bg-rose-600' : 'bg-cream-100 text-forest-500 hover:bg-cream-200'}`}
-            title={recording ? 'Stop & transcribe' : 'Tap to talk'}
-          >
-            {transcribing ? <Loader2 size={14} className="animate-spin" /> : recording ? <span className="h-3.5 w-3.5 rounded-[3px] bg-white" /> : <Mic size={14} />}
-          </button>
-        )}
-      </div>
-      {recording && <div className="mt-2"><Waveform active level={micLevel} /></div>}
-    </div>
-  )
-}
-
-function ChipRow({ title, chips, onPick }) {
-  return (
-    <div className="mt-3">
-      <div className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500 mb-2">{title}</div>
-      <div className="flex flex-wrap gap-1.5">
-        {chips.map(c => (
-          <button key={c} onClick={() => onPick(c)} className="rounded-full border border-black/[0.06] bg-white px-3 py-1.5 text-[11.5px] text-forest-500 hover:bg-cream-50">
-            {c}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function ErrorNote({ msg }) {
-  return (
-    <div className="mt-3 flex items-start gap-2 rounded-xl bg-butter-100 border border-butter-200 px-3 py-2 text-[12px] text-ink-700">
-      <AlertTriangle size={12} className="mt-0.5 shrink-0 text-butter-300" /> {msg}
     </div>
   )
 }

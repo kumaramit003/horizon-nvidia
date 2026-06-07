@@ -13,24 +13,18 @@ function Plant({ stage }) {
       style={{ transform: `scaleY(${scale}) scale(${0.6 + scale * 0.4})` }}
     >
       <svg viewBox="0 0 60 80" width="56" height="74">
-        {/* pot */}
         <path d="M16 62 L44 62 L41 78 L19 78 Z" fill="#C99A6B" />
         <rect x="14" y="58" width="32" height="6" rx="2" fill="#B5854F" />
-        {/* soil */}
         <ellipse cx="30" cy="60" rx="13" ry="3" fill="#5B4636" />
-        {/* stem */}
         <path d="M30 60 C30 46 30 38 30 30" stroke="#5BAE78" strokeWidth="3.5" fill="none" strokeLinecap="round" />
-        {/* lower leaves */}
         <path d="M30 50 C22 47 16 49 12 42 C20 38 28 42 30 50 Z" fill="#7DCC93" />
         <path d="M30 48 C38 45 44 47 48 40 C40 36 32 40 30 48 Z" fill="#6BBF85" />
-        {/* upper leaves */}
         {leaf2 && (
           <>
             <path d="M30 38 C24 35 19 37 16 31 C23 28 29 31 30 38 Z" fill="#8FD9A2" />
             <path d="M30 36 C36 33 41 35 44 29 C37 26 31 30 30 36 Z" fill="#7DCC93" />
           </>
         )}
-        {/* bloom */}
         {bloom && (
           <g>
             {[0, 72, 144, 216, 288].map(a => (
@@ -44,36 +38,50 @@ function Plant({ stage }) {
   )
 }
 
-// Flora's watering can with falling droplets.
-function WateringCan() {
+// Finn's watering can — water streams from the rose head at the spout tip only.
+function WateringCan({ pouring = false }) {
   return (
-    <div className="relative" style={{ transform: 'rotate(-18deg)' }}>
-      <svg viewBox="0 0 50 40" width="46" height="38">
-        <path d="M10 14 L34 14 L31 32 C31 35 28 36 22 36 C16 36 13 35 13 32 Z" fill="#8FBF7E" />
-        <rect x="14" y="9" width="16" height="6" rx="3" fill="#6E8B6A" />
-        <path d="M34 18 L46 10" stroke="#6E8B6A" strokeWidth="3" strokeLinecap="round" />
-        <path d="M10 18 C2 16 2 26 8 28" stroke="#6E8B6A" strokeWidth="3" fill="none" strokeLinecap="round" />
+    <div
+      className="relative animate-[canPour_2.6s_ease-in-out_infinite]"
+      style={{ transformOrigin: '18px 22px', width: 52, height: 44 }}
+    >
+      <svg viewBox="0 0 52 44" width="52" height="44" className="relative z-[1]">
+        <path d="M8 14 L36 14 L32 34 C32 37 28 38 22 38 C16 38 12 37 12 34 Z" fill="#5C8AA6" />
+        <rect x="14" y="8" width="18" height="7" rx="3" fill="#33586E" />
+        <path d="M8 18 C0 16 0 26 6 28" stroke="#33586E" strokeWidth="3" fill="none" strokeLinecap="round" />
+        <path d="M36 18 L50 26" stroke="#33586E" strokeWidth="3.5" strokeLinecap="round" />
+        <circle cx="50" cy="26" r="4" fill="#33586E" />
+        <circle cx="48" cy="25" r="0.7" fill="#A8D8F0" />
+        <circle cx="50" cy="24" r="0.7" fill="#A8D8F0" />
+        <circle cx="52" cy="25" r="0.7" fill="#A8D8F0" />
       </svg>
-      {/* droplets */}
-      <div className="absolute" style={{ right: -2, top: 26 }}>
-        {[0, 1, 2].map(i => (
-          <span key={i} className="absolute h-1.5 w-1.5 rounded-full bg-sky-300 animate-[waterDrop_1s_ease-in_infinite]"
-            style={{ left: i * 5, animationDelay: `${i * 220}ms` }} />
-        ))}
-      </div>
+      {pouring && (
+        <div
+          className="pointer-events-none absolute z-0"
+          style={{ left: 46, top: 28, width: 12, height: 72 }}
+        >
+          {[0, 1, 2, 3, 4].map(i => (
+            <span
+              key={i}
+              className="absolute left-1/2 h-2.5 w-[5px] -translate-x-1/2 rounded-full bg-sky-300/85 animate-[waterFall_1.1s_ease-in_infinite]"
+              style={{ top: 0, animationDelay: `${i * 160}ms`, marginLeft: `${(i % 3 - 1) * 3}px` }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
 /**
- * Flora tends a garden — one plant per analysis step. The current plant is
- * watered and grows; finished plants stay bloomed with a check; Flora glides
+ * Finn tends a garden — one plant per research step. The current plant is
+ * watered and grows; finished plants stay bloomed with a check; Finn glides
  * to the next plant. Timer-driven so it animates smoothly while the real
  * pipeline runs in the background.
  */
 export default function GardenProgress({ steps, intervalMs = 2600 }) {
   const [step, setStep] = useState(0)
-  const [growing, setGrowing] = useState(1) // current plant's live stage 1..3
+  const [growing, setGrowing] = useState(1)
 
   useEffect(() => {
     if (step >= steps.length) return
@@ -87,8 +95,7 @@ export default function GardenProgress({ steps, intervalMs = 2600 }) {
   const allDone = step >= steps.length
   const activeIndex = allDone ? steps.length - 1 : step
   const n = steps.length
-  // Flora hovers above the active plant.
-  const floraLeft = `${((activeIndex + 0.5) / n) * 100}%`
+  const finnLeft = `${((activeIndex + 0.5) / n) * 100}%`
 
   return (
     <div className="w-full">
@@ -96,29 +103,35 @@ export default function GardenProgress({ steps, intervalMs = 2600 }) {
         <p className="display text-[24px] leading-[1.2] text-forest-500">
           {allDone
             ? <>All planted. <span className="italic-accent text-sage-500">Your plan is blooming.</span></>
-            : <>Flora's planting your plan. <span className="italic-accent text-sage-500">{steps[step]}…</span></>}
+            : <>Finn's reading London &amp; growing your plan. <span className="italic-accent text-sage-500">{steps[step]}…</span></>}
         </p>
       </div>
 
-      <div className="relative mx-auto mt-10 max-w-[640px]">
-        {/* Flora + watering can, glides to the active plant */}
+      <div className="relative mx-auto mt-12 max-w-[820px] px-4">
+        {/* Anchor the can spout (right edge) above each plant — not Finn's centre */}
         <div
-          className="absolute -top-2 z-10 flex -translate-x-1/2 items-end gap-1 transition-all duration-700 ease-out"
-          style={{ left: floraLeft }}
+          className="absolute -top-4 z-10 transition-all duration-700 ease-out"
+          style={{ left: finnLeft, transform: 'translateX(-100%)' }}
         >
-          <AgentFace who="flora" state={allDone ? 'celebrating' : 'happy'} size={84} />
-          {!allDone && <div className="mb-3 -ml-2"><WateringCan /></div>}
+          <div className="flex items-end">
+            <AgentFace who="finn" state={allDone ? 'celebrating' : 'happy'} size={84} />
+            {!allDone && (
+              <div className="relative -ml-3 mb-5">
+                <WateringCan pouring />
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* plant row on a soil strip */}
-        <div className="mt-24 flex items-end justify-between rounded-b-2xl border-b-[6px] border-[#C8A06E] px-1">
+        {/* plant row — extra gap so Finn + water stream have room */}
+        <div className="mt-36 flex items-end justify-center gap-6 sm:gap-8 md:gap-10 rounded-b-2xl border-b-[6px] border-[#C8A06E] px-2 pb-1">
           {steps.map((label, i) => {
             const done = i < step
             const isActive = i === step && !allDone
             const stage = done || allDone ? 3 : isActive ? growing : 0
             return (
-              <div key={label} className="flex flex-1 flex-col items-center">
-                <div className="relative grid h-[80px] place-items-end">
+              <div key={label} className="flex min-w-0 flex-1 max-w-[96px] flex-col items-center">
+                <div className="relative grid h-[110px] place-items-end">
                   <Plant stage={stage} />
                   {(done || allDone) && (
                     <span className="absolute -right-0.5 top-0 grid h-5 w-5 place-items-center rounded-full bg-sage-500 text-white shadow-soft animate-[growPop_0.5s_ease]">
@@ -126,7 +139,7 @@ export default function GardenProgress({ steps, intervalMs = 2600 }) {
                     </span>
                   )}
                 </div>
-                <div className={`mt-2 max-w-[92px] text-center text-[10.5px] leading-tight ${done || allDone ? 'text-forest-500 font-medium' : isActive ? 'text-sage-600 font-medium' : 'text-ink-300'}`}>
+                <div className={`mt-3 max-w-full text-center text-[10.5px] leading-tight ${done || allDone ? 'text-forest-500 font-medium' : isActive ? 'text-sage-600 font-medium' : 'text-ink-300'}`}>
                   {label}
                 </div>
               </div>
@@ -134,7 +147,7 @@ export default function GardenProgress({ steps, intervalMs = 2600 }) {
           })}
         </div>
 
-        <div className="mt-5 text-center text-[11.5px] text-ink-400">
+        <div className="mt-6 text-center text-[11.5px] text-ink-400">
           {allDone ? 'Finishing touches…' : `${step} of ${steps.length} grown`}
         </div>
       </div>

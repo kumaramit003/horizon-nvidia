@@ -15,6 +15,7 @@ async function request(path, options = {}) {
     const body = await res.text()
     throw new Error(`API ${res.status}: ${body}`)
   }
+  if (res.status === 204) return null
   return res.json()
 }
 
@@ -63,6 +64,10 @@ export const api = {
 
   getDiscovery(id) {
     return request(`/discoveries/${id}`)
+  },
+
+  deleteDiscovery(id) {
+    return request(`/discoveries/${id}`, { method: 'DELETE' })
   },
 
   getDashboard(id) {
@@ -151,6 +156,15 @@ export const api = {
     return request(`/discoveries/${id}/ask`, {
       method: 'POST',
       body: JSON.stringify({ question }),
+    })
+  },
+
+  // Conversational turn with an agent. Returns { reply, proposes_change,
+  // change_summary, apply }. No mutation — apply is confirmed separately.
+  chatWithAgent(id, agent, messages) {
+    return request(`/discoveries/${id}/chat`, {
+      method: 'POST',
+      body: JSON.stringify({ agent, messages }),
     })
   },
 

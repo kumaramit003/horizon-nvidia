@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, ArrowRight, Trash2, FileText } from 'lucide-react'
+import { Plus, ArrowRight, Trash2, FileText, Cloud, ExternalLink, Gift } from 'lucide-react'
 import { Card, SectionHeader, Tag, Progress, AskWhyButton, VoiceCommandBlock, SourceChip, EmptyPage, SectionLoading } from '../components/ui'
 import { DynIcon } from '../lib/icons'
+import { isTechStartup, STARTUP_CREDIT_PROGRAMS, STARTUP_CREDITS_CATALOGUE } from '../data/startupCredits'
 
 // Best-effort monthly burn: sum the first £-amount of any row that reads
 // "/ mo" (i.e. recurring). One-off costs are ignored.
@@ -22,16 +23,25 @@ export default function Financials({ dashboard, section }) {
   const _assumptions = dashboard?.monthly_assumptions?.length ? dashboard.monthly_assumptions : []
   const _grants = dashboard?.grants?.length ? dashboard.grants : []
   const _fundingReadiness = dashboard?.funding_readiness ?? 0
+  const showStartupCredits = isTechStartup(dashboard)
 
-  const hasAny = _bands.length || _assumptions.length || _grants.length
-  if (!hasAny) {
+  const hasFinancialData = _bands.length || _assumptions.length || _grants.length
+  if (!hasFinancialData && !showStartupCredits) {
     if (section === 'processing' || section === 'pending') return <SectionLoading label="money & grants" />
     return <EmptyPage label="financial analysis" />
+  }
+  if (!hasFinancialData && (section === 'processing' || section === 'pending')) {
+    return (
+      <div className="space-y-10">
+        <SectionLoading label="money & grants" />
+        {showStartupCredits && <StartupCreditsSection />}
+      </div>
+    )
   }
 
   return (
     <div className="space-y-10">
-      {/* Bands */}
+      {_bands.length > 0 && (
       <section>
         <SectionHeader
           eyebrow={`${_bands.length} way${_bands.length === 1 ? '' : 's'} to start`}
@@ -56,12 +66,13 @@ export default function Financials({ dashboard, section }) {
           ))}
         </div>
       </section>
+      )}
 
+      {(_assumptions.length > 0 || _fundingReadiness > 0) && (
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.5fr_1fr]">
-        {/* Assumptions — editable */}
-        <AssumptionsTable initial={_assumptions} />
+        {_assumptions.length > 0 && <AssumptionsTable initial={_assumptions} />}
 
-        {/* Funding readiness */}
+        {_fundingReadiness > 0 && (
         <Card className="relative overflow-hidden !p-7">
           <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full gradient-soft-butter opacity-60 blur-2xl" />
           <div className="relative">
@@ -93,9 +104,13 @@ export default function Financials({ dashboard, section }) {
             </button>
           </div>
         </Card>
+        )}
       </div>
+      )}
 
-      {/* Grants */}
+      {showStartupCredits && <StartupCreditsSection />}
+
+      {_grants.length > 0 && (
       <section>
         <SectionHeader
           eyebrow="Funding & support"
@@ -141,6 +156,7 @@ export default function Financials({ dashboard, section }) {
           ))}
         </div>
       </section>
+      )}
 
       <VoiceCommandBlock
         commands={[
@@ -150,6 +166,60 @@ export default function Financials({ dashboard, section }) {
         ]}
       />
     </div>
+  )
+}
+
+function StartupCreditsSection() {
+  return (
+    <section>
+      <SectionHeader
+        eyebrow="Tech startup perks"
+        title="Claim cloud & infra credits"
+        description="Your idea looks like a tech product — these programs offer free or discounted cloud, database and tooling for eligible startups."
+      />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {STARTUP_CREDIT_PROGRAMS.map(p => (
+          <a
+            key={p.name}
+            href={p.url}
+            target="_blank"
+            rel="noreferrer"
+            className="card group relative overflow-hidden !p-6 transition-all hover:shadow-lift"
+          >
+            <div className={`absolute -right-10 -top-10 h-36 w-36 rounded-full gradient-soft-${p.tone} opacity-50 blur-2xl`} />
+            <div className="relative">
+              <div className="flex items-start justify-between gap-3">
+                <span className={`grid h-10 w-10 place-items-center rounded-xl gradient-soft-${p.tone}`}>
+                  <Cloud size={16} className="text-forest-500" />
+                </span>
+                <ExternalLink size={14} className="shrink-0 text-ink-300 transition-colors group-hover:text-forest-500" />
+              </div>
+              <div className="mt-3 text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500">{p.provider}</div>
+              <div className="display text-[19px] leading-tight text-forest-500">{p.name}</div>
+              <p className="mt-2 text-[13px] leading-relaxed text-ink-700">{p.benefit}</p>
+              <span className="mt-3 inline-block pill-cream">{p.category}</span>
+            </div>
+          </a>
+        ))}
+      </div>
+      <a
+        href={STARTUP_CREDITS_CATALOGUE}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-4 flex items-center gap-3 rounded-2xl border border-dashed border-sage-200 bg-cream-50/80 px-5 py-4 transition-colors hover:border-sage-300 hover:bg-white"
+      >
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-sage-100 text-sage-600">
+          <Gift size={16} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-[13.5px] font-medium text-forest-500">Browse 50+ more startup credit programmes</div>
+          <div className="mt-0.5 text-[12px] text-ink-500">
+            Curated list of free &amp; discounted plans from AWS, GCP, Mixpanel, Segment, and more — on GitHub.
+          </div>
+        </div>
+        <ExternalLink size={14} className="shrink-0 text-ink-400" />
+      </a>
+    </section>
   )
 }
 

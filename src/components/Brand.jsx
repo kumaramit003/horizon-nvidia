@@ -1,4 +1,5 @@
 import React from 'react'
+import { AgentFace } from './AgentFace'
 
 // Hand-drawn leaf glyph used in the mark and across icons.
 export function LeafMark({ size = 18, className = '' }) {
@@ -44,19 +45,23 @@ export function Wordmark({ size = 'md', subtitle = 'London · Voice-first adviso
   )
 }
 
-export function AgentBadge({ who, status, size = 'sm' }) {
+export function AgentBadge({ who, status, size = 'sm', compact = false }) {
   const isFlora = who === 'flora'
-  const grad = isFlora ? 'gradient-orb-flora' : 'gradient-orb-finn'
   const label = isFlora ? 'Flora' : 'Finn'
   const sub = isFlora ? 'discovering' : 'researching'
-  const px = size === 'md' ? 'px-3 py-1.5 text-[12px]' : 'px-2.5 py-1 text-[11px]'
+  const px = compact
+    ? 'max-w-full px-2 py-0.5 text-[10.5px]'
+    : size === 'md' ? 'px-3 py-1.5 text-[12px]' : 'px-2.5 py-1 text-[11px]'
+  const faceSize = compact ? 22 : 28
+  const faceState =
+    status === 'processing' || status === 'discovering' || status === 'researching' ? 'thinking'
+    : status === 'ready' ? 'idle'
+    : 'idle'
   return (
-    <span className={`inline-flex shrink-0 items-center gap-2 rounded-full border border-black/[0.05] bg-white ${px} font-medium text-forest-500`}>
-      <span className={`grid h-4 w-4 place-items-center rounded-full ${grad}`}>
-        <span className="h-1.5 w-1.5 rounded-full bg-white/70" />
-      </span>
-      <span>{label}</span>
-      {status && <span className="text-ink-500">· {status === 'auto' ? sub : status}</span>}
+    <span className={`inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border border-black/[0.05] bg-white ${px} font-medium text-forest-500`}>
+      <AgentFace who={who} state={faceState} size={faceSize} />
+      <span className="truncate">{label}</span>
+      {status && <span className="shrink-0 text-ink-500">· {status === 'auto' ? sub : status}</span>}
     </span>
   )
 }

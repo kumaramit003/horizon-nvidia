@@ -1,13 +1,12 @@
 import React, { useState } from 'react'
 import {
   Mic, BarChart3, Database, Activity, AlertCircle, ExternalLink,
-  RefreshCw, Search, Globe, MessageSquare, Loader2, Check
+  RefreshCw, Globe, MessageSquare, Loader2, Check
 } from 'lucide-react'
 import { Card, SectionHeader, Tag, Confidence, AskWhyButton } from '../components/ui'
-import { LeafMark, Tagline } from '../components/Brand'
-import { LONDON_DATASETS } from '../data/londonDatasets'
+import { Tagline } from '../components/Brand'
+import { AgentFace } from '../components/AgentFace'
 import { DynIcon } from '../lib/icons'
-import { resolveDataset } from '../lib/datasets'
 
 function StatusDot({ status }) {
   if (status === 'processing') return <Loader2 size={13} className="shrink-0 animate-spin text-peach-500" />
@@ -53,10 +52,6 @@ export default function AgentWorkspace({ dashboard, sections = {}, wsStatus, onR
       setRerunError(e?.message || 'Re-run failed')
     }
   }
-  const [filter, setFilter] = useState('All')
-  const filters = ['All', 'Locations', 'Audience', 'Market validation', 'Money & grants']
-  const visible = filter === 'All' ? LONDON_DATASETS : LONDON_DATASETS.filter(d => d.used_in.includes(filter))
-
   return (
     <div className="space-y-10">
       {/* The two agents hero */}
@@ -68,9 +63,11 @@ export default function AgentWorkspace({ dashboard, sections = {}, wsStatus, onR
             <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full gradient-soft-peach opacity-50 blur-3xl" />
             <div className="absolute -left-10 -bottom-10 h-32 w-32 rounded-full gradient-soft-lavender opacity-30 blur-2xl" />
             <div className="relative flex items-start gap-4">
-              <span className="grid h-16 w-16 shrink-0 place-items-center rounded-3xl gradient-orb-flora shadow-lift">
-                <MessageSquare size={20} className="text-white" />
-              </span>
+              <AgentFace
+                who="flora"
+                state={ideaStatus === 'processing' ? 'thinking' : 'idle'}
+                size={80}
+              />
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h2 className="display text-[28px] leading-tight text-forest-500">Flora</h2>
@@ -113,9 +110,11 @@ export default function AgentWorkspace({ dashboard, sections = {}, wsStatus, onR
             <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full gradient-soft-mint opacity-50 blur-3xl" />
             <div className="absolute -left-10 -bottom-10 h-32 w-32 rounded-full gradient-soft-sky opacity-30 blur-2xl" />
             <div className="relative flex items-start gap-4">
-              <span className="grid h-16 w-16 shrink-0 place-items-center rounded-3xl gradient-orb-finn shadow-lift">
-                <LeafMark size={22} className="opacity-95" />
-              </span>
+              <AgentFace
+                who="finn"
+                state={isAnalysing ? 'thinking' : 'idle'}
+                size={80}
+              />
               <div className="flex-1">
                 <div className="flex items-center gap-2">
                   <h2 className="display text-[28px] leading-tight text-forest-500">Finn</h2>
@@ -175,88 +174,49 @@ export default function AgentWorkspace({ dashboard, sections = {}, wsStatus, onR
                 <RefreshCw size={12} className={isAnalysing ? 'animate-spin' : ''} />
                 {isAnalysing ? `Analysing… ${finnDone}/${FINN_SECTIONS.length}` : 'Re-run analysis'}
               </button>
-              <span className="text-[11.5px] text-ink-500">{FINN_SECTIONS.length} modules · {LONDON_DATASETS.length} datasets</span>
+              <span className="text-[11.5px] text-ink-500">{FINN_SECTIONS.length} research modules</span>
             </div>
             {rerunError && <div className="relative mt-2 text-[11.5px] text-rose-300">{rerunError}</div>}
           </div>
         </div>
       </section>
 
-      {/* London Datastore — Flora's intelligence layer */}
+      {/* London Datastore — public reference only */}
       <section>
         <SectionHeader
           eyebrow="Finn's intelligence layer"
           title="The London datasets feeding your plan"
-          description="All anchored to public sources on data.london.gov.uk."
-          right={
-            <div className="flex items-center gap-2">
-              <button className="btn-ghost text-[12.5px]"><RefreshCw size={12} /> Re-pull</button>
-              <a
-                href="https://data.london.gov.uk/dataset/"
-                target="_blank"
-                rel="noreferrer"
-                className="btn-forest text-[12.5px]"
-              >
-                Browse Datastore <ExternalLink size={12} />
-              </a>
-            </div>
-          }
+          description="Finn draws on open data published by the GLA, ONS, TfL and others — all hosted on the London Datastore."
         />
 
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <Search size={13} className="text-ink-500" />
-          {filters.map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors
-                ${filter === f
-                  ? 'border-forest-500 bg-forest-500 text-cream-50'
-                  : 'border-black/[0.06] bg-white text-ink-700 hover:bg-cream-50'}`}
-            >
-              {f}
-            </button>
-          ))}
-          <span className="ml-auto text-[12px] text-ink-500">{visible.length} dataset{visible.length === 1 ? '' : 's'}</span>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {visible.map(d => (
-            <a
-              key={d.slug}
-              href={resolveDataset(d.slug, d.name).url}
-              target="_blank"
-              rel="noreferrer"
-              className="card relative overflow-hidden !p-5 transition-all hover:shadow-lift"
-            >
-              <div className={`absolute -right-10 -top-10 h-32 w-32 rounded-full gradient-soft-${d.tone} opacity-60 blur-2xl`} />
-              <div className="relative">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className={`grid h-9 w-9 place-items-center rounded-xl gradient-soft-${d.tone}`}>
-                      <Database size={14} className="text-forest-500" />
-                    </span>
-                    <div className="leading-tight">
-                      <div className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500">London Datastore</div>
-                      <div className="display text-[17px] leading-tight text-forest-500">{d.name}</div>
-                    </div>
-                  </div>
-                  <ExternalLink size={13} className="mt-1 shrink-0 text-ink-300" />
-                </div>
-                <p className="mt-3 text-[13px] leading-relaxed text-ink-700">{d.description}</p>
-                <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                  {d.used_in.map(u => (
-                    <span key={u} className="pill-cream">{u}</span>
-                  ))}
-                </div>
-                <div className="mt-3 flex items-center justify-between text-[11.5px] text-ink-500">
-                  <span>{d.publisher} · refresh {d.refresh.toLowerCase()}</span>
-                  <span className="font-mono">pulled {d.last_pulled}</span>
-                </div>
+        <a
+          href="https://data.london.gov.uk/dataset/"
+          target="_blank"
+          rel="noreferrer"
+          className="card group relative flex items-start gap-4 overflow-hidden !p-6 transition-all hover:shadow-lift"
+        >
+          <div className="absolute -right-12 -top-12 h-40 w-40 rounded-full gradient-soft-sky opacity-50 blur-2xl" />
+          <span className="relative grid h-12 w-12 shrink-0 place-items-center rounded-2xl gradient-soft-mint">
+            <Database size={18} className="text-forest-500" />
+          </span>
+          <div className="relative min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[10.5px] font-medium uppercase tracking-[0.16em] text-ink-500">Reference</div>
+                <div className="display text-[22px] leading-tight text-forest-500">London Datastore</div>
               </div>
-            </a>
-          ))}
-        </div>
+              <ExternalLink size={15} className="mt-1 shrink-0 text-ink-300 transition-colors group-hover:text-forest-500" />
+            </div>
+            <p className="mt-2 max-w-[640px] text-[13.5px] leading-relaxed text-ink-600">
+              Browse the full catalogue of public London datasets at{' '}
+              <span className="font-medium text-forest-500">data.london.gov.uk</span>
+              {' '}— the official open-data portal for the Greater London Authority.
+            </p>
+            <span className="mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-medium text-forest-500">
+              <Globe size={13} /> Visit data.london.gov.uk
+            </span>
+          </div>
+        </a>
       </section>
 
       {/* Activity timeline */}
@@ -278,8 +238,12 @@ export default function AgentWorkspace({ dashboard, sections = {}, wsStatus, onR
                 const st = statusOf(a.key)
                 return (
                   <li key={a.key + idx} className="relative flex items-start gap-4">
-                    <div className={`relative z-10 grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${isFlora ? 'gradient-orb-flora' : 'gradient-orb-finn'}`}>
-                      <DynIcon name={a.icon} size={16} className="text-white" />
+                    <div className="relative z-10 shrink-0">
+                      <AgentFace
+                        who={isFlora ? 'flora' : 'finn'}
+                        state={st === 'processing' ? 'thinking' : st === 'ready' ? 'happy' : 'idle'}
+                        size={52}
+                      />
                     </div>
                     <div className="flex-1 card !p-4">
                       <div className="flex flex-wrap items-center gap-2">

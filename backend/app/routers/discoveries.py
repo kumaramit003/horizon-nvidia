@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from ..agents.pipeline import ALL_SECTIONS, SECTION_KEYS, run_streaming_pipeline
 from ..agents.finn import answer_question, refine_section
 from ..agents.flora import run_flora
+from ..agents.converse import agent_chat
 from ..database import get_db
 from ..models import DiscoveryCreate, DiscoverySummary
 from .auth import current_user
@@ -126,6 +127,14 @@ async def list_discoveries(user: Annotated[dict, Depends(current_user)]):
             )
         )
     return items
+
+
+@router.delete("/{discovery_id}", status_code=204)
+async def delete_discovery(discovery_id: str, user: Annotated[dict, Depends(current_user)]):
+    db = get_db()
+    result = await db.discoveries.delete_one({"_id": _oid(discovery_id), "user_id": user["_id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(404, "Discovery not found")
 
 
 @router.get("/{discovery_id}")
@@ -291,6 +300,27 @@ async def _run_flora_only(discovery_id: ObjectId, conversation: list[dict]) -> N
     except Exception:
         logger.exception("Flora-only re-run failed for %s", discovery_id)
         await db.discoveries.update_one({"_id": discovery_id}, {"$set": {"sections.idea": "ready"}})
+
+
+class ChatRequest(BaseModel):
+    agent: str  # 'flora' | 'finn'
+    messages: list[dict]
+
+
+@router.post("/{discovery_id}/chat")
+async def chat_with_agent(discovery_id: str, body: ChatRequest, user: Annotated[dict, Depends(current_user)]):
+    """Conversational turn with Flora or Finn. No mutation — the agent may
+    PROPOSE a change the founder then approves via /refine|/refine-section."""
+    agent = body.agent if body.agent in ("flora", "finn") else "flora"
+    db = get_db()
+    doc = await db.discoveries.find_one({"_id": _oid(discovery_id), "user_id": user["_id"]}, {"dashboard": 1})
+    if not doc:
+        raise HTTPException(404, "Discovery not found")
+    try:
+        return await agent_chat(agent, doc.get("dashboard") or {}, body.messages or [])
+    except Exception as e:
+        logger.exception("Agent chat failed")
+        raise HTTPException(502, f"{agent.title()} couldn't reply: {e}")
 
 
 @router.post("/{discovery_id}/answer")

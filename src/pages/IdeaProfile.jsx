@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
 import {
   Briefcase, MapPin, Layers, Sprout, Sparkles, PoundSterling,
-  ArrowUpRight, AlertTriangle, Mic, Quote, Send, Check, Loader2, X
+  ArrowUpRight, AlertTriangle, Mic, Send, Check, Loader2, X
 } from 'lucide-react'
 import { Card, SectionHeader, Confidence, Tag, Progress, MiniActions, VoiceCommandBlock, AskWhyButton, SectionLoading } from '../components/ui'
+import { AgentFace } from '../components/AgentFace'
 import { api } from '../lib/api'
 
 function EmptyState() {
@@ -105,9 +106,13 @@ export default function IdeaProfile({ dashboard, section, discoveryId, onRefresh
         <Card className="relative overflow-hidden !p-7">
           <div className="absolute -left-10 top-1/2 -translate-y-1/2 h-48 w-48 rounded-full gradient-soft-peach opacity-50 blur-2xl" />
           <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl gradient-orb-flora shadow-soft">
-              <Quote size={18} className="text-white" />
-            </span>
+            <button
+              onClick={() => askFlora('Flora, walk me through your read on my idea.')}
+              title="Talk to Flora"
+              className="shrink-0 self-start transition-transform hover:scale-[1.04]"
+            >
+              <AgentFace who="flora" state="idle" size={72} />
+            </button>
             <div className="flex-1">
               <div className="section-eyebrow mb-1.5">Flora's read on the idea</div>
               <p className="display text-[22px] leading-snug text-forest-500">
@@ -154,15 +159,7 @@ export default function IdeaProfile({ dashboard, section, discoveryId, onRefresh
           />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {assumptions.map(a => (
-              <div key={a.text} className={`rounded-2xl border border-black/[0.05] p-5 gradient-soft-${a.tone}`}>
-                <Tag kind={a.tag}>{a.tag}</Tag>
-                <p className="mt-3 display text-[18px] leading-snug text-ink-900">{a.text}</p>
-                <MiniActions
-                  onAccept={() => askFlora(`I agree with this — build on it: "${a.text}"`)}
-                  onEdit={() => askFlora(`Let me correct this assumption: "${a.text}" — actually, `)}
-                  onChallenge={() => askFlora(`Challenge this assumption and tell me if it's wrong: "${a.text}"`)}
-                />
-              </div>
+              <AssumptionCard key={a.text} a={a} askFlora={askFlora} />
             ))}
           </div>
         </Card>
@@ -271,6 +268,38 @@ function OpenQuestion({ q, index, discoveryId, onAnswered }) {
         </div>
       )}
     </li>
+  )
+}
+
+// An assumption Flora is currently making. Accept = lock it in (visible
+// confirmation, no heavy re-run). Edit / Challenge open a real conversation
+// with Flora where she can defend it and propose a change you approve.
+function AssumptionCard({ a, askFlora }) {
+  const [accepted, setAccepted] = useState(false)
+  return (
+    <div className={`relative rounded-2xl border p-5 transition-colors ${accepted ? 'border-mint-200 bg-mint-50' : 'border-black/[0.05] gradient-soft-' + a.tone}`}>
+      <div className="flex items-center justify-between">
+        <Tag kind={a.tag}>{a.tag}</Tag>
+        {accepted && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-mint-200 px-2 py-0.5 text-[10.5px] font-medium text-forest-500">
+            <Check size={11} /> Locked in
+          </span>
+        )}
+      </div>
+      <p className="mt-3 display text-[18px] leading-snug text-ink-900">{a.text}</p>
+      {accepted ? (
+        <div className="mt-4 flex items-center gap-2 text-[12px] text-forest-500">
+          <span>Flora will keep building on this.</span>
+          <button onClick={() => setAccepted(false)} className="underline decoration-dotted hover:text-forest-600">Undo</button>
+        </div>
+      ) : (
+        <MiniActions
+          onAccept={() => setAccepted(true)}
+          onEdit={() => askFlora(`Let me correct this assumption: "${a.text}" — actually, `)}
+          onChallenge={() => askFlora(`Challenge this assumption and defend your reasoning — is it actually right? "${a.text}"`)}
+        />
+      )}
+    </div>
   )
 }
 

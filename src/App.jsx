@@ -189,8 +189,27 @@ function AuthedApp({ user, onSignOut }) {
     }
   }
 
+  const deleteWorkspace = async (id) => {
+    await api.deleteDiscovery(id)
+    if (id === discoveryId) {
+      stopPolling()
+      sessionStorage.removeItem('discoveryId')
+      setDiscoveryId(null)
+      setDashboard(null)
+      setSections({})
+      setWsStatus(null)
+      setStage('intake')
+    }
+  }
+
   if (stage === 'intake') {
-    return <Intake onComplete={handleIntakeComplete} onOpenWorkspace={loadExistingWorkspace} />
+    return (
+      <Intake
+        onComplete={handleIntakeComplete}
+        onOpenWorkspace={loadExistingWorkspace}
+        onDeleteWorkspace={deleteWorkspace}
+      />
+    )
   }
 
   const PageComponent = pages[page]
@@ -223,6 +242,7 @@ function AuthedApp({ user, onSignOut }) {
           setWsStatus(null)
           setStage('intake')
         }}
+        onDeleteWorkspace={deleteWorkspace}
       />}
 
       <main className="flex min-w-0 flex-1 flex-col">

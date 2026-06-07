@@ -1,9 +1,9 @@
 import React from 'react'
 import {
   Lightbulb, Users, LineChart, MapPin, PoundSterling,
-  ListChecks, Leaf, ArrowLeft, Database, ExternalLink, Sparkles, Swords, PanelLeftClose
+  ListChecks, Leaf, ArrowLeft, Swords, PanelLeftClose
 } from 'lucide-react'
-import { Wordmark, AgentBadge } from './Brand'
+import { Wordmark } from './Brand'
 import WorkspaceSwitcher from './WorkspaceSwitcher'
 
 const items = [
@@ -17,7 +17,7 @@ const items = [
   { id: 'agents',      label: 'Flora & Finn',      icon: Leaf,          agent: 'both' },
 ]
 
-export default function Sidebar({ active, onChange, onBackToIntake, discoveryId, onSwitchWorkspace, onCollapse }) {
+export default function Sidebar({ active, onChange, onBackToIntake, discoveryId, onSwitchWorkspace, onDeleteWorkspace, onCollapse }) {
   const activeAgent = items.find(i => i.id === active)?.agent
 
   return (
@@ -50,6 +50,7 @@ export default function Sidebar({ active, onChange, onBackToIntake, discoveryId,
           activeAgent={activeAgent}
           onSwitch={onSwitchWorkspace}
           onNew={onBackToIntake}
+          onDelete={onDeleteWorkspace}
         />
       </div>
 
@@ -75,32 +76,6 @@ export default function Sidebar({ active, onChange, onBackToIntake, discoveryId,
           )
         })}
       </nav>
-
-      <div className="border-t border-black/[0.06] p-3 space-y-2">
-        <div className="rounded-2xl border border-black/[0.05] bg-white p-3.5">
-          <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.16em] text-ink-500">
-            <Sparkles size={11} className="text-sage-500" /> Try with voice
-          </div>
-          <div className="mt-2 space-y-1 text-[12px] text-forest-500">
-            <div>"Flora, challenge my idea."</div>
-            <div>"Finn, find grants."</div>
-            <div>"Finn, compare locations."</div>
-          </div>
-        </div>
-        <a
-          href="https://data.london.gov.uk/dataset/"
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-2 rounded-2xl border border-black/[0.05] gradient-soft-mint px-3 py-2.5 text-[11.5px] text-forest-500 hover:shadow-soft"
-        >
-          <Database size={13} className="text-forest-500" />
-          <div className="flex-1 leading-tight">
-            <div className="font-semibold">Powered by London Datastore</div>
-            <div className="text-[10.5px] text-forest-400">12 datasets indexed</div>
-          </div>
-          <ExternalLink size={11} />
-        </a>
-      </div>
     </aside>
   )
 }

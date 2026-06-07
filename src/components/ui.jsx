@@ -1,6 +1,7 @@
 import React from 'react'
 import { Check, Pencil, X, RefreshCw, HelpCircle, Sparkles, ArrowUpRight, Database } from 'lucide-react'
 import { resolveDataset } from '../lib/datasets'
+import { AgentFace } from './AgentFace'
 
 export function Card({ className = '', children, padded = true, ...rest }) {
   return (
@@ -134,14 +135,28 @@ export function openAssistant(detail) {
 
 export function VoiceCommandBlock({ commands, title = 'Try with your voice', agent = 'finn', mode }) {
   const openWith = (cmd) => openAssistant({ text: cmd, agent, mode })
+  const name = agent === 'flora' ? 'Flora' : 'Finn'
   return (
     <div className="card relative overflow-hidden p-6">
       <div className="absolute -right-16 -top-16 h-48 w-48 rounded-full gradient-soft-peach opacity-70 blur-2xl" />
       <div className="relative">
-        <div className="section-eyebrow mb-2 flex items-center gap-1.5">
-          <Sparkles size={11} className="text-peach-500" /> {title}
+        <div className="flex items-start gap-3">
+          <button
+            onClick={() => openAssistant({ agent, mode })}
+            title={`Talk to ${name}`}
+            className="shrink-0 transition-transform hover:scale-[1.04]"
+          >
+            <AgentFace who={agent} state="idle" size={64} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <div className="section-eyebrow mb-1 flex items-center gap-1.5">
+              <Sparkles size={11} className="text-peach-500" /> {title}
+            </div>
+            <p className="text-[14px] text-ink-700">
+              Tap {name} or a prompt to start talking — {name} can debate it with you and confirm before changing your plan.
+            </p>
+          </div>
         </div>
-        <p className="text-[14px] text-ink-700">Click a prompt below to open the voice panel pre-filled.</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {commands.map((c, i) => (
             <button
